@@ -9,6 +9,8 @@ is_train_mode = False
 is_on_cloud = False 
 max_cores = 30 #max number of cores to use for parallelization
 
+ps_version = 2 #i.e., which probSevere version is being used 2 for v2, 3 for v3
+
 dx_km = 3.0 #horizontal grid spacing of wofs in km 
 ps_thresh = 0.01 #ps objects must have probs greater than or equal to this amount to be considered
 
