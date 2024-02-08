@@ -90,10 +90,10 @@ class MLGenerator:
 
         #Get the forecast specifications (e.g., start valid, end_valid, ps_lead time, wofs_lead_time, etc.) 
         #These will be determined principally by the wofs files we're dealing with
-        forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files[0], self.wofs_files)
+        forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files)
 
         #Do PS preprocessing -- parallel track 1 -- should return a PS xarray 
-        ps = PS.preprocess_ps(fcst_grid, forecast_specs) 
+        ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
 
         
         #Do WoFS preprocessing -- parallel track 2 
@@ -205,6 +205,13 @@ class Grid:
 class PS:
     '''Handles the ProbSevere forecasts/processing'''
 
+
+    #Class constants 
+
+    #Variables we will take from older probSevere files that will help us
+    #construct current predictors 
+    HISTORICAL_VARIABLES = ["id", "hail_prob", "torn_prob", "wind_prob", "age"]
+
     def __init__(self, gdf, xarr):
         ''' @gdf is a geodataframe containing all the relevant predictors
             @xarr is an xarray of all the relevant predictors
@@ -217,15 +224,20 @@ class PS:
         return 
 
     @classmethod
-    def preprocess_ps(cls, grid, specs):
+    def preprocess_ps(cls, grid, specs, ps_path, ps_files):
         ''' Like the "main method"/blueprint method for doing the probSevere preprocessing.
             @grid is the forecast Grid object for the current case
             @specs is the ForecastSpecs object for the current case. 
+            @ps_path is the string path to the ProbSevere files
+            @ps_files is the list of ProbSevere files, beginning with the most recent and 
+                working backward in time. 
             Ultimately creates a PS object with a gdf and xarrray of the relevant predictors 
         '''
 
         #Current procedure: #TODO
         #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
+        past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files)
+        print (past_ps_df) 
 
         #Get PS geodataframe 
 
@@ -244,13 +256,106 @@ class PS:
         pass
 
 
+    @classmethod
+    def get_past_ps_df(cls, specs, ps_path, ps_files):
+        ''' Returns a dataframe with statistics from past PS files (that will  be relevant
+            for our predictors 
+            @specs is the ForecastSpecs object for our situation
+            @ps_path is the path to the probSevere files
+            @ps_files is the list of probSevere files (ordered most recent to oldest)
+
+        '''
+
+        #Create new dataframe 
+        prev_df = pd.DataFrame(columns = cls.HISTORICAL_VARIABLES)
+
+        for p in range(len(ps_files)):
+
+            ps_file = ps_files[p]
+            age = specs.ps_ages[p]
+
+            #Extract the information 
+            ps_data = PS.get_ps_data(ps_path, ps_file) 
+
+            if (ps_data != ""): 
+                #extract historical info
+                curr_df = PS.extract_historical_info(ps_data, age, c.ps_version)
+
+                #Merge dataframe
+                if (len(curr_df) > 0):
+                    prev_df = pd.concat([prev_df, curr_df], axis=0, ignore_index=True, copy=False)
+        
+
+
+        return prev_df 
+
+    @classmethod
+    def extract_historical_info(cls, ps_data, age, ps_version): 
+        ''' Extracts historical information from given set of ps_data (from one ps_file) 
+            and stores this information in a pandas dataframe. Ultimately, returns the
+            dataframe. 
+            @ps_data is an array of probSevere data, 
+            @age is the age corresponding to the given probSevere file, 
+            @ps_version is the probSevere version (e.g., 2 or 3) 
+        '''
+
+        hail_probs = [] 
+        torn_probs = [] 
+        wind_probs = [] 
+        ids = [] 
+        ages = [] 
+
+        if (ps_version == 2): 
+
+            if (len(ps_data['features']) > 0):
+                for i in ps_data['features']:
+                    hail_probs.append(float(i['models']['probhail']['PROB'])/100.)
+                    torn_probs.append(float(i['models']['probtor']['PROB'])/100.)
+                    wind_probs.append(float(i['models']['probwind']['PROB'])/100.)
+
+                    ids.append(i['properties']['ID'])
+                    ages.append(age) 
+
+        #TODO: Implement ps version 3 code here
+        elif (ps_version == 3):
+            pass 
+
+        
+        df = pd.DataFrame(list(zip(ids, hail_probs, torn_probs, wind_probs, ages)), columns=cls.HISTORICAL_VARIABLES)
+
+        return df
+
+
+    @staticmethod
+    def get_ps_data(ps_path, ps_file):
+        ''' Opens ps file given a path and filename.
+            Returns the ps data (if file is there) or a blank string
+            (i.e., "", if the data is not found. 
+        '''
+
+        try: 
+            full_fname = "%s/%s" %(ps_path, ps_file) 
+            f = open (full_fname) 
+            data = json.load(f)   
+        
+        except FileNotFoundError:
+            print ("%s not found. Adding as if it had no information" %json_file)
+            data = ""
+
+        except json.decoder.JSONDecodeError:
+            print ("%s Extra data in file. Proceeding as if it had no information." %json_file)
+            data = ""
+
+        return data  
+
+
 class ForecastSpecs: 
 
     '''Class to handle/store the forecast specifications.'''
 
     def __init__(self, start_valid, end_valid, start_valid_dt, end_valid_dt, \
                     wofs_init_time, wofs_init_time_dt, forecast_window, ps_init_time,\
-                    ps_lead_time_start, ps_lead_time_end, ps_init_time_dt):
+                    ps_lead_time_start, ps_lead_time_end, ps_init_time_dt, ps_ages):
 
         ''' @start valid is the start of the forecast valid period (4-character string)
             @end_valid is the end of the forecast valid period (4-character string) 
@@ -273,6 +378,9 @@ class ForecastSpecs:
             @ps_init_time_dt is the probSevere initialization time in datetime form
                 (i.e., datetime object) 
 
+            @ps_ages is a list of (potential) probSevere ages (in minutes; relative to
+                the most recent ProbSevere file) based on the probSevere input files 
+
         '''
 
         self.start_valid = start_valid
@@ -292,10 +400,12 @@ class ForecastSpecs:
 
         self.ps_init_time_dt = ps_init_time_dt
 
+        self.ps_ages = ps_ages 
+
         pass
 
     @classmethod
-    def create_forecast_specs(cls, first_ps_file, wofs_files):
+    def create_forecast_specs(cls, ps_files, wofs_files):
         '''Blueprint method for creating a ForecastSpecs object based on the first 
             PS file and the list of wofs files. 
         '''
@@ -317,8 +427,8 @@ class ForecastSpecs:
 
         valid_window = ForecastSpecs.subtract_dt(end_valid_dt, start_valid_dt, True) 
 
-        #Find PS init time from PS file 
-        ps_init_time, ps_init_date = ForecastSpecs.find_ps_date_time(first_ps_file, c.ps_version)
+        #Find PS init time from the first (most recent) PS file 
+        ps_init_time, ps_init_date = ForecastSpecs.find_ps_date_time(ps_files[0], c.ps_version)
 
         #Obtain datetime objects
         ps_init_time_dt = ForecastSpecs.str_to_dattime(ps_init_time, ps_init_date) 
@@ -331,14 +441,54 @@ class ForecastSpecs:
         #based on PS initailization time and end of the valid period
         ps_end_lead_time = ForecastSpecs.subtract_dt(end_valid_dt, ps_init_time_dt, True) 
 
+
+        #Find the ages associated with the different ps files 
+        ps_ages = ForecastSpecs.find_ps_ages(ps_files)
+
         #Create ForecastSpecs object  
 
         new_specs = ForecastSpecs(start_valid, end_valid, start_valid_dt, end_valid_dt, wofs_init_time, \
                             wofs_init_time_dt, valid_window, ps_init_time, ps_start_lead_time, ps_end_lead_time,\
-                            ps_init_time_dt) 
+                            ps_init_time_dt, ps_ages) 
 
         return new_specs
 
+
+
+    @staticmethod
+    def datetime_from_ps(ps_file):
+        ''' Creates/returns a datetime object from probsevere file'''
+
+        time, date = ForecastSpecs.find_ps_date_time(ps_file, c.ps_version)
+        dt_obj = ForecastSpecs.str_to_dattime(time, date) 
+
+        return dt_obj
+
+
+    @staticmethod
+    def find_ps_ages(ps_files): 
+        ''' Finds/returns an array of ages (in minutes) of the various PS files'''
+
+        ages = [] 
+
+        first_ps_file = ps_files[0]
+        first_ps_dt = ForecastSpecs.datetime_from_ps(first_ps_file) 
+
+        for p in range(len(ps_files)):
+            curr_ps_file = ps_files[p]
+            
+            #Get datetime object 
+            curr_dt = ForecastSpecs.datetime_from_ps(curr_ps_file)
+
+            #Find the difference between the current dt and the first_ps_dt in minutes 
+            diff = ForecastSpecs.subtract_dt(first_ps_dt, curr_dt, True) 
+
+            #append to ages array 
+
+            ages.append(diff) 
+
+
+        return ages
 
     @staticmethod 
     def timedelta_to_min(in_dt):
