@@ -89,7 +89,8 @@ class MLGenerator:
         grid = Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
         
 
-        #Do PS preprocessing -- parallel track 1
+        #Do PS preprocessing -- parallel track 1 -- should return a PS xarray 
+        
 
         
         #Do WoFS preprocessing -- parallel track 2 
@@ -201,6 +202,13 @@ class PS:
     '''Handles the ProbSevere forecasts/processing'''
 
     def __init__(self):
+        pass
+
+
+    @classmethod
+    def preprocess_ps(cls):
+        ''' Like the "main method"/blueprint method for doing the probSevere preprocessing.'''
+
         pass
 
 
