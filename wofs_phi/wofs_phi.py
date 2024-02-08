@@ -54,7 +54,7 @@ class MLGenerator:
     ''' This class will handle the ML generator functions. '''
 
 
-    def __init__(self, wofs_files, ps_files, ps_direc, wofs_direc, nc_outdir): 
+    def __init__(self, wofs_files, ps_files, ps_path, wofs_path, nc_outdir): 
 
         ''' @wofs_files is the list of wofs_files to use for the prediction (in chronological order,
             beginning with the start of the prediction window/valid period and ending with the end of
@@ -64,9 +64,9 @@ class MLGenerator:
             starting with the most recent file/time step. So we'd have t = 0, -2, -10, -14, -30, -44,
             -60, -74, -90, -104, -120, -134, -150, -164, -180 minutes
 
-            @ps_direc is the string path to the probSevere files 
+            @ps_path is the string path to the probSevere files 
 
-            @wofs_direc is the string path to the wofs files   
+            @wofs_path is the string path to the wofs files   
 
             @nc_outdir is the directory to save the final .ncdf files to 
             
@@ -74,10 +74,9 @@ class MLGenerator:
 
         self.wofs_files = wofs_files
         self.ps_files = ps_files
-        self.ps_direc = ps_direc
-        self.wofs_direc = wofs_direc
+        self.ps_path = ps_path
+        self.wofs_path = wofs_path
         self.nc_outdir = nc_outdir
-        self.pkl_dir = pkl_dir 
 
 
     def generate(self):
@@ -87,6 +86,7 @@ class MLGenerator:
         #TODO: Should build roadmap 
        
         # Get grid stats from first wofs file 
+        grid = Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
         
 
         #Do PS preprocessing -- parallel track 1
@@ -135,6 +135,67 @@ class Wofs:
         #self.nx = nx
 
         pass
+
+class Grid: 
+    '''Handles the (wofs) grid attributes.'''
+
+
+    def __init__(self, ny, nx, lats, lons, tlat1, tlat2, stlon, sw_lat, ne_lat, sw_lon, ne_lon): 
+        ''' @ny is number of y grid points,
+            @nx is number of x grid points,
+            @lats is list of latitudes 
+            @lons is list of longitudes
+            @tlat1 is true latitude 1
+            @tlat2 is true latitude 2
+            @stlon is standard longitude
+            @sw_lat is the southwest corner latitude
+            @ne_lat is the northeast corner latitude
+            @sw_lon is the southwest corner longitude
+            @ne_lon is the northeast corner longitude 
+        '''
+
+        self.ny = ny
+        self.nx = nx
+        self.lats = lats
+        self.lons = lons
+        self.tlat1 = tlat1
+        self.tlat2 = tlat2
+        self.stlon = stlon
+        self.sw_lat = sw_lat
+        self.ne_lat = ne_lat
+        self.sw_lon = sw_lon
+        self.ne_lon = ne_lon
+
+
+    @classmethod
+    def create_wofs_grid(cls, wofs_path, wofs_file): 
+        '''Creates a Grid object from a wofs path and wofs file.'''
+
+        full_wofs_file = "%s/%s" %(wofs_path, wofs_file) 
+
+        ds = nc.Dataset(full_wofs_file)
+        ny = int(ds.__dict__['ny'])
+        nx = int(ds.__dict__['nx'])
+
+
+        wofsLats = ds['xlat'][:]
+        wofsLons = ds['xlon'][:]
+
+        Tlat1 = ds.__dict__['TRUELAT1']
+        Tlat2 = ds.__dict__['TRUELAT2']
+        Stlon = ds.__dict__['STAND_LON']
+
+        SW_lat = wofsLats[0,0]
+        NE_lat = wofsLats[-1,-1]
+        SW_lon = wofsLons[0,0]
+        NE_lon = wofsLons[-1,-1]
+
+        #Create new wofs Grid object 
+        wofs_grid = Grid(ny, nx, wofsLats, wofsLons, Tlat1, Tlat2, Stlon, SW_lat, NE_lat, SW_lon, NE_lon)  
+
+        return wofs_grid
+        
+
 
 class PS:
     '''Handles the ProbSevere forecasts/processing'''
