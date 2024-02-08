@@ -18,7 +18,7 @@ from shapely.geometry import Point, MultiPolygon, Polygon
 from shapely.prepared import prep
 from shapely import geometry
 import numpy as np
-from mpl_toolkits.basemap import Basemap
+#from mpl_toolkits.basemap import Basemap
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -36,7 +36,7 @@ import multiprocessing as mp
 import itertools
 from multiprocessing.pool import Pool
 from datetime import datetime
-from skexplain.common.multiprocessing_utils import run_parallel, to_iterator
+#from skexplain.common.multiprocessing_utils import run_parallel, to_iterator
 import netCDF4 as nc
 import os
 import copy
@@ -45,83 +45,94 @@ from sklearn.calibration import calibration_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import xarray as xr
+import config as c
 
 
-class Setup: 
 
 
-    ''' Handles the setup/initialization aspects of wofs-phi, including 
-        parameters passed in as well as constants set by the system'''
-
-    #======================================================
-    #Class "constants" that can be adjusted in-code here. 
-    #======================================================
-
-    is_train_mode = False #True if we're using this script for training; False if used for testing
-    is_on_cloud = False # True if we're using this script on the cloud; False if using locally
-    forecast_mode_time_window = 30 #time window of forecast mode in minutes (e.g., 30 means 30-min forecasts)
-    warning_mode_time_window = 90 #in minutes; e.g., 90 means predict 0-90 minutes
-    max_cores = 30 #maximum number of computing cores to use for parallelization
-
-    wofs_dir = "" #Directory to wofs files 
-    ps_dir = "" #Directory to PS files 
-    nc_outdir = "./" #Directory to save the .ncdf files to 
-    pkl_dir = "" #Directory pointing to the trained pkl files 
-
-    dx_km = 3.0 #horizontal grid spacing in km
-    ps_thresh = 0.01 #ps objects must have probs greater than or equal to this amount to be considered
-    dm = 18 #number of wofs members 
-    min_radius = 1.5 #in km (for probSevere objects) 
-    max_radius = 1.5 #in km (for probSevere objects) #Used to be 30.0, but that was much too big
-    conv_type = "square" #"square" or "circle" -- tells how to do the convolutions 
-    predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially in km for predictors
-    obs_radii = ["30.0", "15.0", "7.5", "39.0"]
-    final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
-    final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
-    bottom_hour_inits = ["1730", "1830", "1930", "2030", "2130", "2230", "2330", "0030", "0130",\
-                     "0230", "0330", "0430", "0530", "0630", "0730", "0830", "0930", "1030",\
-                     "1130", "1230", "1330", "1430", "1530", "1630"]
-
-    next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500"]
+class MLGenerator: 
+    ''' This class will handle the ML generator functions. '''
 
 
-    #=========================================================
+    def __init__(self, wofs_files, ps_files, ps_direc, wofs_direc, nc_outdir): 
+
+        ''' @wofs_files is the list of wofs_files to use for the prediction (in chronological order,
+            beginning with the start of the prediction window/valid period and ending with the end of
+            the prediction window/valid period. 
+
+            @ps_files are the list of probSevere files needed in reverse chronological order (i.e.,
+            starting with the most recent file/time step. So we'd have t = 0, -2, -10, -14, -30, -44,
+            -60, -74, -90, -104, -120, -134, -150, -164, -180 minutes
+
+            @ps_direc is the string path to the probSevere files 
+
+            @wofs_direc is the string path to the wofs files   
+
+            @nc_outdir is the directory to save the final .ncdf files to 
+            
+        '''
+
+        self.wofs_files = wofs_files
+        self.ps_files = ps_files
+        self.ps_direc = ps_direc
+        self.wofs_direc = wofs_direc
+        self.nc_outdir = nc_outdir
+        self.pkl_dir = pkl_dir 
+
+
+    def generate(self):
+        '''Instance method to generate the predictions given an MLGenerator object.
+            Kind of like the "main method" for generating the predictions. ''' 
+
+        #TODO: Should build roadmap 
+       
+        # Get grid stats from first wofs file 
+        
+
+        #Do PS preprocessing -- parallel track 1
 
         
-    def __init__(self, list_of_wofs_files, list_of_ps_files, lead_time_window): 
-        '''
-            @list_of_wofs_files is a list of wofs summary files
-            @list_of_ps_files is a list of probSevere summary files
-            @lead_time_window is an integer indicating what lead time window
-            this prediction is for (e.g., for 30-min windows, 1 would be 0-30, 
-            2 would be 30-60, 3 would be 60-90, etc.)
+        #Do WoFS preprocessing -- parallel track 2 
 
-        '''
-        self.list_of_wofs_files = list_of_wofs_files
-        self.list_of_ps_files = list_of_ps_files
-        self.lead_time_window = lead_time_window
+
+        #Concatenate parallel tracks 
+
+
+        #Add convolutions 
+
+
+        #Convert to 1d predictor list 
+
+
+
+        #Save predictors to file (if we're training) 
+
+
+
+        #Load RF, run the predictors through RF 
+
+
+        #Save predictions to ncdf 
 
 
         pass
 
 
-    @classmethod
-    def create_setup(cls):
-        ''' This is a blueprint method designed to initialize a Setup object based on user-specified inputs'''
-
-        pass
-
-
-
-
+    @staticmethod
+    def get_full_path(pathToFiles, filenames):
+        '''Returns a list of the full path to a list of files given a path and a list of filenames.'''
+        full_list = ["%s/%s" %(pathToFiles, f) for f in filenames]
+    
+        return full_list  
 
 
 class Wofs:
     '''Handles the wofs forecasting/processing'''
 
+
     def __init__(self):
-        self.ny = ny
-        self.nx = nx
+        #self.ny = ny
+        #self.nx = nx
 
         pass
 
@@ -132,46 +143,35 @@ class PS:
         pass
 
 
-class DataGenerator: 
-    '''Handles the merging of wofs and ps data (through inheriting Wofs and PS objects)'''
-
-    def __init__(self, Wofs, PS):
-
-        pass 
-
 def main():
     '''Main Method'''
 
-    #Get the key setup details 
-    #Create a Setup object with the key setup/logistic details 
-    #setup = Setup(currDate, currTime) 
-
     #For debugging 
-
-    print ("Hello, World") 
-
     #TODO: Put these in and start seeing if I can get something reasonable. 
-    wofs_files = [] 
-    ps_files = [] 
-    prediction_window = 1 #first 30 minutes 
-
-    setup = Setup(wofs_files, ps_files, prediction_window)
+    wofs_direc = "/work/mflora/SummaryFiles/20210604/0200"
+    ps_direc = "/work/eric.loken/wofs/probSevere"
+    nc_outdir = "."
 
 
-    #Roadmap: #TODO 
-    #Get Setup object
-    
+    #TODO: We'd need to develop some code (maybe in an outside script, etc. to determine these files/filenames
+    wofs_files = ["wofs_ALL_05_20210605_0200_0225.nc", "wofs_ALL_06_20210605_0200_0230.nc", \
+                    "wofs_ALL_07_20210605_0200_0235.nc", "wofs_ALL_08_20210605_0200_0240.nc",\
+                    "wofs_ALL_09_20210605_0200_0245.nc", "wofs_ALL_10_20210605_0200_0250.nc",\
+                    "wofs_ALL_11_20210605_0200_0255.nc"] 
+    ps_files = ["MRMS_EXP_PROBSEVERE_20210605.022400.json", "MRMS_EXP_PROBSEVERE_20210605.022200.json",\
+                "MRMS_EXP_PROBSEVERE_20210605.021400.json", "MRMS_EXP_PROBSEVERE_20210605.021000.json",\
+                "MRMS_EXP_PROBSEVERE_20210605.015400.json", "MRMS_EXP_PROBSEVERE_20210605.014000.json",\
+                "MRMS_EXP_PROBSEVERE_20210605.012400.json", "MRMS_EXP_PROBSEVERE_20210605.011000.json",\
+                "MRMS_EXP_PROBSEVERE_20210605.005400.json", "MRMS_EXP_PROBSEVERE_20210605.004000.json",\
+                "MRMS_EXP_PROBSEVERE_20210605.002400.json", "MRMS_EXP_PROBSEVERE_20210605.001000.json",\
+                "MRMS_EXP_PROBSEVERE_20210604.235400.json", "MRMS_EXP_PROBSEVERE_20210604.234000.json",\
+                "MRMS_EXP_PROBSEVERE_20210604.232400.json"] 
 
-    #Do ProbSevere preprocessing 
+    ml_obj = MLGenerator(wofs_files, ps_files, ps_direc, wofs_direc, nc_outdir)
 
+    #Do the generation 
+    ml_obj.generate() 
 
-
-    #Do WoFS Preprocessing 
-
-
-
-    #
-    
 
 
 if (__name__ == '__main__'):
