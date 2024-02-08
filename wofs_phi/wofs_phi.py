@@ -92,10 +92,6 @@ class MLGenerator:
         #These will be determined principally by the wofs files we're dealing with
         forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files[0], self.wofs_files)
 
-        print (forecast_specs.forecast_window) 
-        print (forecast_specs.ps_lead_time_start) 
-        print (forecast_specs.ps_lead_time_end) 
-        
 
         #Do PS preprocessing -- parallel track 1 -- should return a PS xarray 
         
@@ -327,11 +323,6 @@ class ForecastSpecs:
         ps_end_lead_time = ForecastSpecs.subtract_dt(end_valid_dt, ps_init_time_dt, True) 
 
         #Create ForecastSpecs object  
-
-        #start_valid, end_valid, start_valid_dt, end_valid_dt, \
-        #            wofs_init_time, wofs_init_time_dt, forecast_window, ps_init_time,\
-        #            ps_lead_time_start, ps_lead_time_end, ps_init_time_dt
-
 
         new_specs = ForecastSpecs(start_valid, end_valid, start_valid_dt, end_valid_dt, wofs_init_time, \
                             wofs_init_time_dt, valid_window, ps_init_time, ps_start_lead_time, ps_end_lead_time,\
