@@ -3,8 +3,8 @@
 #
 # It needs an input date and time (which will be used 
 # to set WoFS and PS initializations) and 
-
-
+#
+#
 # Created by Eric Loken, 2/6/2024
 #
 #
@@ -86,15 +86,14 @@ class MLGenerator:
         #TODO: Should build roadmap 
        
         # Get grid stats from first wofs file 
-        grid = Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
+        fcst_grid = Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
 
         #Get the forecast specifications (e.g., start valid, end_valid, ps_lead time, wofs_lead_time, etc.) 
         #These will be determined principally by the wofs files we're dealing with
         forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files[0], self.wofs_files)
 
-
         #Do PS preprocessing -- parallel track 1 -- should return a PS xarray 
-        
+        ps = PS.preprocess_ps(fcst_grid, forecast_specs) 
 
         
         #Do WoFS preprocessing -- parallel track 2 
@@ -206,14 +205,24 @@ class Grid:
 class PS:
     '''Handles the ProbSevere forecasts/processing'''
 
-    def __init__(self):
-        pass
+    def __init__(self, gdf, xarr):
+        ''' @gdf is a geodataframe containing all the relevant predictors
+            @xarr is an xarray of all the relevant predictors
+        '''
 
+        self.gdf = gdf
+        self.xarr = xarr
+        
+
+        return 
 
     @classmethod
-    def preprocess_ps(cls):
-        ''' Like the "main method"/blueprint method for doing the probSevere preprocessing.'''
-
+    def preprocess_ps(cls, grid, specs):
+        ''' Like the "main method"/blueprint method for doing the probSevere preprocessing.
+            @grid is the forecast Grid object for the current case
+            @specs is the ForecastSpecs object for the current case. 
+            Ultimately creates a PS object with a gdf and xarrray of the relevant predictors 
+        '''
 
         #Current procedure: #TODO
         #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
@@ -230,7 +239,7 @@ class PS:
 
         #Convert to xarray 
 
-        #Create new PS object -- will hold 
+        #Create new PS object -- will hold geodataframe of predictors and xarray 
 
         pass
 
