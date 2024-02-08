@@ -5,6 +5,14 @@
 # run wofs_phi.py 
 #==================================
 
+
+#TODO: It's possible the below won't be needed--Not sure yet. 
+#Options are: 
+#"forecast" for forecast mode in wofs viewer, 
+#"warning" for warning mode in wofs viewer, and
+#"phi_tool" for forecast mode in PHI Tool. 
+mode = "forecast" 
+
 is_train_mode = False
 is_on_cloud = False 
 max_cores = 30 #max number of cores to use for parallelization
