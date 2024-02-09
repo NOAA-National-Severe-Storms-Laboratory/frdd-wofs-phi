@@ -212,6 +212,9 @@ class PS:
     #construct current predictors 
     HISTORICAL_VARIABLES = ["id", "hail_prob", "torn_prob", "wind_prob", "age"]
 
+    #List of variables to extract from current probsevere files 
+    CURR_PS_VARIABLES = ["id", "hail_prob", "torn_prob", "wind_prob", "east_motion", "south_motion", "points"]
+
     def __init__(self, gdf, xarr):
         ''' @gdf is a geodataframe containing all the relevant predictors
             @xarr is an xarray of all the relevant predictors
@@ -237,9 +240,11 @@ class PS:
         #Current procedure: #TODO
         #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
         past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files)
-        print (past_ps_df) 
 
         #Get PS geodataframe 
+        ps_gdf = PS.get_ps_gdf(ps_path, ps_files[0])
+
+        print (ps_gdf) 
 
         #Get Wofs geodataframe -- and, ultimately, buffered WoFS geodataframe --> for merging purposes
 
@@ -254,6 +259,45 @@ class PS:
         #Create new PS object -- will hold geodataframe of predictors and xarray 
 
         pass
+
+
+    @staticmethod
+    def get_ps_gdf(ps_path, ps_file):
+        ''' Obtains probSevere geoDataFrame from current probsevere file (@ps_file)'''
+
+        #Read in the data 
+        ps_data = PS.get_ps_data(ps_path, ps_file) 
+
+        #Extract the relevant information from the ps data. 
+        #NOTE: 0 for age of 0 since the file is current (although won't matter much for this) 
+        ps_df = PS.extract_ps_info(ps_data, 0, c.ps_version, True)
+        
+        #Find polygons from the set of points from each PS object
+        polygons = PS.get_polygons_from_points(ps_df['points']) 
+
+        #Create the gdf
+        df_dict = {"hail_prob": ps_df['hail_prob'], "torn_prob": ps_df['torn_prob'], "wind_prob": ps_df['wind_prob'],\
+                     "east_motion": ps_df['east_motion'], "south_motion": ps_df['south_motion'], "id": ps_df['id']}
+
+        gdf = gpd.GeoDataFrame(data=df_dict, geometry=polygons, crs="EPSG:4326")
+            
+
+        return gdf
+
+    @staticmethod
+    def get_polygons_from_points(ps_points):
+        ''' Returns a list of polygons from the sets of points associated with each object.
+            @ps_points is a pandas dataframe of a series of points 
+        '''
+
+        polygons = [] 
+
+        for obj in ps_points: 
+            pgon = Polygon(obj[0])
+            polygons.append(pgon)
+
+    
+        return polygons
 
 
     @classmethod
@@ -279,7 +323,8 @@ class PS:
 
             if (ps_data != ""): 
                 #extract historical info
-                curr_df = PS.extract_historical_info(ps_data, age, c.ps_version)
+                #False at the end because this is for past/historical data 
+                curr_df = PS.extract_ps_info(ps_data, age, c.ps_version, False)
 
                 #Merge dataframe
                 if (len(curr_df) > 0):
@@ -290,13 +335,17 @@ class PS:
         return prev_df 
 
     @classmethod
-    def extract_historical_info(cls, ps_data, age, ps_version): 
-        ''' Extracts historical information from given set of ps_data (from one ps_file) 
+    def extract_ps_info(cls, ps_data, age, ps_version, isCurrent): 
+        ''' Extracts information from given set of ps_data (from one ps_file) 
             and stores this information in a pandas dataframe. Ultimately, returns the
             dataframe. 
             @ps_data is an array of probSevere data, 
             @age is the age corresponding to the given probSevere file, 
-            @ps_version is the probSevere version (e.g., 2 or 3) 
+            @ps_version is the probSevere version (e.g., 2 or 3)
+            @isCurrent is boolean: True if we're extracting information relevant to 
+                the current ProbSevere file (e.g., storm motion, points, hazard probs, etc.), 
+                False if we're extracting information relevant for past/historical probSevere
+                (e.g., hazard probs, ids, and ages only)  
         '''
 
         hail_probs = [] 
@@ -304,6 +353,9 @@ class PS:
         wind_probs = [] 
         ids = [] 
         ages = [] 
+        points = [] 
+        east_motion = [] 
+        south_motion = []         
 
         if (ps_version == 2): 
 
@@ -313,6 +365,11 @@ class PS:
                     torn_probs.append(float(i['models']['probtor']['PROB'])/100.)
                     wind_probs.append(float(i['models']['probwind']['PROB'])/100.)
 
+                    east_motion.append(float(i['properties']['MOTION_EAST'])*0.06) #multiply by 0.06 to convert to km/min
+                    south_motion.append(float(i['properties']['MOTION_SOUTH'])*0.06) #multiply by 0.06 to convert to km/min
+
+                    points.append(i['geometry']['coordinates'])
+
                     ids.append(i['properties']['ID'])
                     ages.append(age) 
 
@@ -320,8 +377,14 @@ class PS:
         elif (ps_version == 3):
             pass 
 
-        
-        df = pd.DataFrame(list(zip(ids, hail_probs, torn_probs, wind_probs, ages)), columns=cls.HISTORICAL_VARIABLES)
+        #if we're dealing with past PS files: 
+        if (isCurrent == False): 
+            df = pd.DataFrame(list(zip(ids, hail_probs, torn_probs, wind_probs, ages)), columns=cls.HISTORICAL_VARIABLES)
+
+        #if we're dealing with current PS files
+        else: 
+            df = pd.DataFrame(list(zip(ids, hail_probs, torn_probs, wind_probs, east_motion, south_motion, points)),\
+                                columns=cls.CURR_PS_VARIABLES)
 
         return df
 
