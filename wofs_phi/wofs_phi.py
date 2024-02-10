@@ -83,8 +83,6 @@ class MLGenerator:
         '''Instance method to generate the predictions given an MLGenerator object.
             Kind of like the "main method" for generating the predictions. ''' 
 
-        #TODO: Should build roadmap 
-       
         # Get grid stats from first wofs file 
         fcst_grid = Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
 
@@ -215,6 +213,9 @@ class PS:
     #List of variables to extract from current probsevere files 
     CURR_PS_VARIABLES = ["id", "hail_prob", "torn_prob", "wind_prob", "east_motion", "south_motion", "points"]
 
+    #Buffer to add around wofs points in m. 2.15km guarantees that we cover the full grid cell
+    WOFS_BUFFER = 2.15*10**3 
+
     def __init__(self, gdf, xarr):
         ''' @gdf is a geodataframe containing all the relevant predictors
             @xarr is an xarray of all the relevant predictors
@@ -241,24 +242,365 @@ class PS:
         #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
         past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files)
 
-        #Get PS geodataframe 
+        #Get PS geodataframe (i.e., for current PS object) 
         ps_gdf = PS.get_ps_gdf(ps_path, ps_files[0])
 
-        print (ps_gdf) 
+        #Get Wofs geodataframe
+        wofs_gdf = PS.get_wofs_gdf(grid) 
 
-        #Get Wofs geodataframe -- and, ultimately, buffered WoFS geodataframe --> for merging purposes
+        #Add buffer to wofs geodataframe (since wofs grid points are larger than a literal "point") 
+        buffered_wofs_gdf = PS.add_gpd_buffer(wofs_gdf, cls.WOFS_BUFFER)
 
-        #Get merged PS/WoFS geodataframe, which is how we "map" PS points to wofs grid 
+        #Merge the wofs and probSevere geodataframes -- this is how we will eventually "map" 
+        #PS points to wofs grid
+        merged_gdf = buffered_wofs_gdf.sjoin(ps_gdf, how='inner', predicate='intersects')
 
         #Do the extrapolation 
+        extrapolated_gdf = PS.do_extrapolation(past_ps_df, merged_gdf, specs)
 
-        #Put the key predictor fields in geodataframe 
+        #Map to wofs grid 
 
         #Convert to xarray 
 
         #Create new PS object -- will hold geodataframe of predictors and xarray 
 
         pass
+
+
+    @staticmethod
+    def do_extrapolation(prev_ps_df, curr_gdf, fcst_specs):
+        ''' This method creates/returns a "final" geopandas dataframe with all relevant PS 
+            attriutes/predictors over the relevant time period for all PS objects in wofs
+            domain
+            @prev_ps_df is the dataframe of past PS objects
+            @curr_gdf is the merged "WoFS/PS geopandas dataframe. 
+            @fcst_specs is a ForecastSpecs object for the current situation.
+        '''
+
+        #If there are no objects, then there's nothing to apply the extrapolation to
+        if (len(curr_gdf) == 0):
+            output_gdf = curr_gdf.copy(deep=True)
+
+
+        else: 
+
+            #Get unique object IDs from current PS file/gdf
+            obj_ids = curr_gdf['id'].unique() 
+       
+            subsets = [] #Will hold the gdfs from individual objects  
+
+            #Loop over unique object IDs -- parallelize eventually?? 
+            for obj_id in obj_ids: 
+
+                #Find the gdf entries corresponding to the relevant object
+                obj_gdf = curr_gdf.loc[curr_gdf['id']==obj_id]
+
+                past_obj_df = prev_ps_df.loc[prev_ps_df['id']==obj_id]
+
+                #Get object attributes -- hazard probs and storm motion components
+
+                obj_hail_prob = PS.get_object_attribute(obj_gdf, "hail_prob")
+                obj_torn_prob = PS.get_object_attribute(obj_gdf, "torn_prob")
+                obj_wind_prob = PS.get_object_attribute(obj_gdf, "wind_prob")
+                obj_motion_east = PS.get_object_attribute(obj_gdf, "east_motion") 
+                obj_motion_south = PS.get_object_attribute(obj_gdf, "south_motion") 
+
+                #Find Storm Age
+                obj_age = PS.find_obj_age(obj_id, prev_ps_df) 
+                
+                #Find 14- and 30-minute changes 
+                fourteen_min_change_hail, fourteen_min_change_torn, fourteen_min_change_wind = \
+                        PS.find_prob_change(obj_id, prev_ps_df, 14)
+
+                thirty_min_change_hail, thirty_min_change_torn, thirty_min_change_wind = \
+                        PS.find_prob_change(obj_id, prev_ps_df, 30) 
+
+                #Get extrapolation points (no adjustable radius) 
+
+                orig_extrap_points = PS.get_extrapolation_points(c.max_ps_extrap_time,\
+                    obj_motion_east, obj_motion_south, c.dx_km, \
+                    fcst_specs.adjustable_radii_gridpoint)
+
+
+                #Now, add the adjustable radii to the set of extrapolation points 
+                extrap_points = PS.add_adjustable_radii(orig_extrap_points, fcst_specs, c.dx_km)
+
+                subset_gdf = PS.apply_extrapolation(obj_gdf, extrap_points)
+
+                #Add the probabilities, age, 14-, and 30-minute prob changes  
+                attribute_names = ["hail_prob", "torn_prob", "wind_prob", "age",\
+                                    "fourteen_change_hail", "fourteen_change_torn", \
+                                    "fourteen_change_wind", "thirty_change_hail", \
+                                    "thirty_change_torn", "thirty_change_wind"]
+
+                dataToAdd = [obj_hail_prob, obj_torn_prob, obj_wind_prob, obj_age, \
+                            fourteen_min_change_hail, fourteen_min_change_torn, \
+                            fourteen_min_change_wind, thirty_min_change_hail, \
+                            thirty_min_change_torn, thirty_min_change_wind] 
+
+                subset_gdf = PS.add_ps_attributes(subset_gdf, attribute_names, dataToAdd) 
+
+                #Add to subsets list 
+                subsets.append(subset_gdf) 
+
+            #Concatenate all subsets
+            output_gdf = pd.concat(subsets, axis=0, ignore_index=True) 
+
+
+
+    
+        return output_gdf 
+
+        
+    @staticmethod 
+    def add_ps_attributes(in_gdf, var_names, data_to_add):
+        ''' Adds new columns of data to an existing geopandas dataframe.
+            @in_gdf the existing geopandas dataframe
+            @var_names is a list of (string) names of the new variables 
+            @data_to_add is a list of the corresponding data to be added. 
+        '''
+
+        for d in range(len(var_names)):
+            var_name = var_names[d] 
+            curr_data = data_to_add[d] 
+            
+            in_gdf[var_name] = curr_data
+
+        return in_gdf
+
+
+    @staticmethod
+    def apply_extrapolation(in_gdf, in_extrap_points):
+        '''Applies the (spatially expanded) extrapolated points to the original geodataframe.
+            @in_gdf is an incoming geopandas dataframe of PS/wofs points (here, will generally
+            be of a single object)
+            @in_extrap_points is a pandas dataframe of relative extrapolation points to be 
+            added/applied to the current set of points 
+        '''
+
+        parts = [] #Will hold dataframes to concat
+
+        for a in range(len(in_gdf)):
+            #print (in_gdf)
+            part = in_extrap_points.copy()
+            part['wofs_j'] = in_extrap_points['y'] + in_gdf['wofs_j'].iloc[a]
+            part['wofs_i'] = in_extrap_points['x'] + in_gdf['wofs_i'].iloc[a]
+            part['t'] = in_extrap_points['t']
+
+            parts.append(part)
+
+
+        #Now concatenate
+        out_df = pd.concat(parts, axis=0, ignore_index=True)
+
+        #Return only the columns that matter: 't', 'wofs_j', 'wofs_i'
+
+        return out_df[['wofs_j', 'wofs_i', 't']]
+
+
+    @staticmethod 
+    def add_adjustable_radii(all_pts_df, curr_specs, km_spacing):
+        ''' Adds the adjustable radius to the dataframe. i.e., 
+            Add in points within a radius -- for each element in all_pts_df 
+            Returns an updated version of all_pts_df with these points added.
+            @all_pts_df is the dataframe of extrapolation points.
+            @curr_specs is the current ForecastSpecs object
+        '''
+
+
+        #Only proceed if there are adjustable radii to add, otherwise skip this
+        #and just return what was passed in 
+        if (max(curr_specs.adjustable_radii_gridpoint) > 0):
+
+            all_column_names = ['y','x', 't', 'max_xy', 'radius_km']
+
+            patch_coords = []
+
+            for a in range(len(all_pts_df)):
+                y = all_pts_df['y'][a]
+                x = all_pts_df['x'][a]
+                ymax = all_pts_df['max_xy'][a]
+                xmax = ymax
+                time = all_pts_df['t'][a]
+                rradius = all_pts_df['radius_km'][a]
+
+
+                #Need to add all relative points within circle 
+
+                #Obtain square patch 
+                real_ys = np.arange(y-ymax, y+ymax+1)
+                real_xs = np.arange(x-xmax, x+xmax+1)
+
+                #TODO: Check if points are within radius. 
+                patch_xs = []
+                patch_ys = []
+                patch_inds = []
+                for xx in real_xs:
+                    for yy in real_ys:
+                        x_rad = abs(x-xx)
+                        y_rad = abs(y-yy)
+                        if ( (math.sqrt(x_rad**2 + y_rad**2)*km_spacing <= rradius) and ((yy,xx) not in patch_coords)):
+                            patch_coords.append((yy,xx))
+                            #We need y,x,t,max_xy,radius_km
+                            patch_inds.append((yy,xx, time, ymax, rradius))
+                            new_point = pd.DataFrame(patch_inds, columns=all_column_names)
+                            #Append new point to original dataframe 
+                            all_pts_df = pd.concat([all_pts_df, new_point], \
+                                            names=all_column_names, ignore_index=True, copy=False) 
+        
+        return all_pts_df 
+
+
+    @staticmethod 
+    def get_extrapolation_points(time, e_motion, s_motion, km_spacing, max_xy):
+        '''
+        Finds the (relative) wofs points that would be hit by extrapolating a storm object
+        over time according to the supplied storm motion vectors. 
+    
+        Returns a set of (unique) relative coordinates that are "hit" by the extrapolation. 
+            E.g., (0,0) is the initial point
+
+        @time is the time in minutes over which to apply the extrapolation
+        @e_motion is the eastward storm motion in km/min
+        @s_motion is the southward storm motion in km/min
+        @km_spacing is the grid spacing of the output (e.g., wofs) grid in km
+        @max_xy is a list of max_x/max_y points associated with each time. --i.e., 
+            the adjustable radii points 
+
+        '''
+
+        minutes = np.arange(time+1) 
+        new_xs = [round((e_motion*m)/(km_spacing)) for m in minutes]
+        new_ys = [round((-s_motion*m)/(km_spacing)) for m in minutes]
+
+
+        #Put these together and add time dimension
+        three_d_extrap_pts = [(new_ys[p], new_xs[p], p, max_xy[p]) for p in range(len(new_xs))]
+
+        #Let's make this a pandas dataframe and then extract the unique points from that
+        all_pts_df = pd.DataFrame(three_d_extrap_pts, columns=['y','x', 't', 'max_xy'])
+
+        #NOTE: Don't drop the duplicates here. 
+        all_pts_df['radius_km'] = all_pts_df['max_xy']*km_spacing
+    
+        return all_pts_df
+
+
+    @staticmethod 
+    def find_prob_change(object_id, past_ps_df, time):
+        '''Finds/returns the change in probabilities over a given time range.
+            @object_id is the object id number, 
+            @past_ps_df is the dataframe of previous PS objects,
+            @time is the time in minutes over which to compute the change  '''
+
+
+        final = past_ps_df.loc[(past_ps_df['id'] == object_id) & (past_ps_df['age'] == 0)]
+        initial = past_ps_df.loc[(past_ps_df['id'] == object_id) & (past_ps_df['age'] == time)]
+
+        if (len(final) > 0):
+            final_hail_prob = final['hail_prob'].iloc[0]
+            final_torn_prob = final['torn_prob'].iloc[0]
+            final_wind_prob = final['wind_prob'].iloc[0]
+
+            if (len(initial) > 0):
+                initial_hail_prob = initial['hail_prob'].iloc[0]
+                initial_torn_prob = initial['torn_prob'].iloc[0]
+                initial_wind_prob = initial['wind_prob'].iloc[0]
+
+                change_hail = final_hail_prob - initial_hail_prob
+                change_torn = final_torn_prob - initial_torn_prob
+                change_wind = final_wind_prob - initial_wind_prob
+            else: #if initial (i.e., older age file) doesn't exist, just set to current probability
+                change_hail = final_hail_prob
+                change_torn = final_torn_prob
+                change_wind = final_wind_prob 
+
+        else: #if final (i.e., current object) doesn't exist, set all probs to 0 ; 
+                #shouldn't be the case very often
+            change_hail = 0.0 
+            change_torn = 0.0
+            change_wind = 0.0 
+
+
+        return change_hail, change_torn, change_wind
+
+
+    @staticmethod
+    def find_obj_age(object_id, previous_ps_df):
+        ''' Finds/returns the age of a given object--based on how long the object
+            ID number has previously existed.
+        '''
+
+        #Need to take the maximum of age columns -- look for the maximum time this
+        #storm has been around. 
+        possible_ages = previous_ps_df.loc[previous_ps_df['id'] == object_id]
+        final_age = max(possible_ages['age'])
+
+        return final_age
+
+
+    @staticmethod
+    def get_object_attribute(object_gdf, var_name):
+        ''' Extracts/returns a given piece of information (@var_name) from a 
+            geodataframe corresponding to one PS object (@object_gdf) 
+        '''
+        
+        output = object_gdf[var_name].iloc[0]
+
+
+        return output
+
+
+    @staticmethod
+    def add_gpd_buffer(in_gdf, buffer_dist):
+        '''
+        Adds a buffer to the points in @in_gdf in meters. 
+        Returns new, buffered, geopandas dataframe. 
+        @in_gdf: Incoming geopandas dataframe with list of lat/lon points
+        @buffer_dist: Buffer distance to be applied, in meters
+
+        '''
+       
+        #Make a copy of the incoming gdf
+        copy_gdf = in_gdf.copy(deep=True)
+
+        #Convert to meters 
+        copy_gdf.to_crs("EPSG:32634", inplace=True)
+
+        #Apply buffer 
+        copy_gdf.geometry = copy_gdf.geometry.buffer(buffer_dist)
+
+        #Convert back to lat/lon coords
+        copy_gdf.to_crs("EPSG:4326", inplace=True) 
+
+
+
+        return copy_gdf
+
+
+    @staticmethod
+    def get_wofs_gdf(wofs_grid):
+        ''' Obtains/Returns a geodataframe of the wofs grid based 
+            on a wofs Grid object (@wofs_grid)'''
+        
+        points = []
+        wofs_i = []
+        wofs_j = []
+        for j in range(wofs_grid.ny):
+            for i in range(wofs_grid.nx):
+                pt = Point((wofs_grid.lons[j,i], wofs_grid.lats[j,i]))
+                points.append(pt)
+                wofs_j.append(j)
+                wofs_i.append(i)
+
+
+        wofs_j = np.array(wofs_j)
+        wofs_i = np.array(wofs_i)
+        wofs_df_dict = {"wofs_j": wofs_j, "wofs_i": wofs_i}
+
+        gdf_wofs = gpd.GeoDataFrame(data=wofs_df_dict, geometry=points, crs="EPSG:4326") 
+
+        return gdf_wofs
 
 
     @staticmethod
@@ -418,7 +760,8 @@ class ForecastSpecs:
 
     def __init__(self, start_valid, end_valid, start_valid_dt, end_valid_dt, \
                     wofs_init_time, wofs_init_time_dt, forecast_window, ps_init_time,\
-                    ps_lead_time_start, ps_lead_time_end, ps_init_time_dt, ps_ages):
+                    ps_lead_time_start, ps_lead_time_end, ps_init_time_dt, ps_ages,\
+                    adjustable_radii_gridpoint):
 
         ''' @start valid is the start of the forecast valid period (4-character string)
             @end_valid is the end of the forecast valid period (4-character string) 
@@ -444,6 +787,11 @@ class ForecastSpecs:
             @ps_ages is a list of (potential) probSevere ages (in minutes; relative to
                 the most recent ProbSevere file) based on the probSevere input files 
 
+            @adjustable_radii_gridpoint is an array of radii (in grid points) showing 
+                how much extrapolation should be done at each extrapolation time from
+                PS file initiation time to the maximum extrapolation time (set in config
+                file)
+
         '''
 
         self.start_valid = start_valid
@@ -465,16 +813,16 @@ class ForecastSpecs:
 
         self.ps_ages = ps_ages 
 
+        self.adjustable_radii_gridpoint = adjustable_radii_gridpoint
+
         pass
 
     @classmethod
     def create_forecast_specs(cls, ps_files, wofs_files):
-        '''Blueprint method for creating a ForecastSpecs object based on the first 
-            PS file and the list of wofs files. 
+        '''Blueprint method for creating a ForecastSpecs object based on the list of
+            PS files (@ps_files) and the list of wofs files (@wofs_files)  
         '''
 
-
-        #TODO: Might have to do this with datetime objects 
         #Find start/end valid and wofs initialization time from wofs files 
         start_valid, start_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[0], "forecast")
         end_valid, end_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[-1], "forecast") 
@@ -508,14 +856,34 @@ class ForecastSpecs:
         #Find the ages associated with the different ps files 
         ps_ages = ForecastSpecs.find_ps_ages(ps_files)
 
+        #Find array of adjustable radii (in grid points) at each extrapolation time/i.e., 
+        #how much the radius should be at each extrapolation time. 
+        adjustable_radii_gridpoint = ForecastSpecs.find_adjustable_radii(c.min_radius, c.max_radius,\
+                                        c.dx_km, c.max_ps_extrap_time)
+
         #Create ForecastSpecs object  
 
         new_specs = ForecastSpecs(start_valid, end_valid, start_valid_dt, end_valid_dt, wofs_init_time, \
                             wofs_init_time_dt, valid_window, ps_init_time, ps_start_lead_time, ps_end_lead_time,\
-                            ps_init_time_dt, ps_ages) 
+                            ps_init_time_dt, ps_ages, adjustable_radii_gridpoint) 
 
         return new_specs
 
+
+    @staticmethod
+    def find_adjustable_radii(radius_min, radius_max, km_grid_spacing, max_extrap_time):
+        '''Finds the adjustable radii at each extrapolation time. Returns an array of radii 
+            at each 1-min of extrapolation time. 
+            @radius_min is the minimum radius (at time 0; generally set in the config file)
+            @radius_max is the maximum radius (at max_extrap_time; generally set in the config file) 
+            @km_grid_spacing is the grid spacing in km
+            @max_extrap_time is the maximum amount of time to do the extrapolation 
+        '''
+
+        adjustable_radii_km = np.linspace(radius_min, radius_max, int(max_extrap_time)+1)
+        adjustable_radii = [math.ceil((r - 1.5)/km_grid_spacing) for r in adjustable_radii_km]
+    
+        return adjustable_radii
 
 
     @staticmethod
