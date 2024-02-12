@@ -22,8 +22,17 @@ ps_version = 2 #i.e., which probSevere version is being used 2 for v2, 3 for v3
 dx_km = 3.0 #horizontal grid spacing of wofs in km 
 ps_thresh = 0.01 #ps objects must have probs greater than or equal to this amount to be considered
 
-min_radius = 1.5 #in km (for probSevere objects) 
+
+max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
+
+#radius (in km) for probSevere objects at time 0
+min_radius = 1.5 #in km (for probSevere objects)
+
+#radius (in km) for probSevere objects at the maximum extrapolation time 
+#generally taken to be 181 minutes. 
 max_radius = 1.5 #in km (for probSevere objects) #Used to be 30.0, but that was much too big
+
+
 conv_type = "square" #"square" or "circle" -- tells how to do the convolutions 
 predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially in km for predictors
 obs_radii = ["30.0", "15.0", "7.5", "39.0"]
