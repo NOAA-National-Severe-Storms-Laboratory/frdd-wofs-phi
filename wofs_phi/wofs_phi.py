@@ -221,6 +221,10 @@ class PS:
             @xarr is an xarray of all the relevant predictors
         '''
 
+        #TODO: Could add a list of past ProbSevereObject objects, and a list of 
+        #current ProbSevereObject objects. 
+
+
         self.gdf = gdf
         self.xarr = xarr
         
@@ -238,7 +242,11 @@ class PS:
             Ultimately creates a PS object with a gdf and xarrray of the relevant predictors 
         '''
 
-        #Current procedure: #TODO
+        #TODO (potential): Could create new class: ProbSevereObject, where each literal ProbSevere
+        #object is an object, and we set all the variables we want to extract. Then we'd have 1 method
+        #to convert this to a dataframe/geodataframe. Might be worth doing. So in the end we'd get
+        #a list of past ProbSevereObject objects and a list of current ProbSevereObject objects. 
+
         #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
         past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files)
 
@@ -263,8 +271,6 @@ class PS:
         #Convert to xarray 
 
         #Create new PS object -- will hold geodataframe of predictors and xarray 
-
-        pass
 
 
     @staticmethod
@@ -317,7 +323,8 @@ class PS:
 
                 #Get extrapolation points (no adjustable radius) 
 
-                orig_extrap_points = PS.get_extrapolation_points(c.max_ps_extrap_time,\
+                #NOTE: fcst_specs.ps_lead_time_end is essentially the time to which we need to extrapolate. 
+                orig_extrap_points = PS.get_extrapolation_points(fcst_specs.ps_lead_time_end,\
                     obj_motion_east, obj_motion_south, c.dx_km, \
                     fcst_specs.adjustable_radii_gridpoint)
 
@@ -470,6 +477,7 @@ class PS:
         '''
 
         minutes = np.arange(time+1) 
+
         new_xs = [round((e_motion*m)/(km_spacing)) for m in minutes]
         new_ys = [round((-s_motion*m)/(km_spacing)) for m in minutes]
 
@@ -852,14 +860,17 @@ class ForecastSpecs:
         #based on PS initailization time and end of the valid period
         ps_end_lead_time = ForecastSpecs.subtract_dt(end_valid_dt, ps_init_time_dt, True) 
 
-
         #Find the ages associated with the different ps files 
         ps_ages = ForecastSpecs.find_ps_ages(ps_files)
 
         #Find array of adjustable radii (in grid points) at each extrapolation time/i.e., 
         #how much the radius should be at each extrapolation time. 
+        #NOTE: We limit the size of "adjustable_radii_gridpoint" to the size of the ps_end_lead_time--
+        #there's no point in taking the extrapolation out farther than that. 
+        #We still need c.max_ps_extrap_time though so that the adjustable radii are applied consistently; 
+        #i.e., c.max_radius corresponds to the same (end) time for all forecasts. 
         adjustable_radii_gridpoint = ForecastSpecs.find_adjustable_radii(c.min_radius, c.max_radius,\
-                                        c.dx_km, c.max_ps_extrap_time)
+                                        c.dx_km, ps_end_lead_time, c.max_ps_extrap_time)
 
         #Create ForecastSpecs object  
 
@@ -871,7 +882,7 @@ class ForecastSpecs:
 
 
     @staticmethod
-    def find_adjustable_radii(radius_min, radius_max, km_grid_spacing, max_extrap_time):
+    def find_adjustable_radii(radius_min, radius_max, km_grid_spacing, ps_end_lead, max_extrap_time):
         '''Finds the adjustable radii at each extrapolation time. Returns an array of radii 
             at each 1-min of extrapolation time. 
             @radius_min is the minimum radius (at time 0; generally set in the config file)
@@ -882,7 +893,11 @@ class ForecastSpecs:
 
         adjustable_radii_km = np.linspace(radius_min, radius_max, int(max_extrap_time)+1)
         adjustable_radii = [math.ceil((r - 1.5)/km_grid_spacing) for r in adjustable_radii_km]
-    
+
+        #Filter the adjustable radii by time -- only extrapolate until the end of the ps lead time;
+        #Any further extrapolation is unnecessary. 
+        adjustable_radii = adjustable_radii[0:int(ps_end_lead)+1]
+
         return adjustable_radii
 
 
@@ -1035,6 +1050,12 @@ def main():
                     "wofs_ALL_07_20210605_0200_0235.nc", "wofs_ALL_08_20210605_0200_0240.nc",\
                     "wofs_ALL_09_20210605_0200_0245.nc", "wofs_ALL_10_20210605_0200_0250.nc",\
                     "wofs_ALL_11_20210605_0200_0255.nc"] 
+    
+    wofs_files2 = ["wofs_ALL_11_20210605_0200_0255.nc", "wofs_ALL_12_20210605_0200_0300.nc",\
+                    "wofs_ALL_13_20210605_0200_0305.nc", "wofs_ALL_14_20210605_0200_0310.nc",\
+                    "wofs_ALL_15_20210605_0200_0315.nc", "wofs_ALL_12_20210605_0200_0320.nc",\
+                    "wofs_ALL_17_20210605_0200_0325.nc"]
+
     ps_files = ["MRMS_EXP_PROBSEVERE_20210605.022400.json", "MRMS_EXP_PROBSEVERE_20210605.022200.json",\
                 "MRMS_EXP_PROBSEVERE_20210605.021400.json", "MRMS_EXP_PROBSEVERE_20210605.021000.json",\
                 "MRMS_EXP_PROBSEVERE_20210605.015400.json", "MRMS_EXP_PROBSEVERE_20210605.014000.json",\
@@ -1044,7 +1065,7 @@ def main():
                 "MRMS_EXP_PROBSEVERE_20210604.235400.json", "MRMS_EXP_PROBSEVERE_20210604.234000.json",\
                 "MRMS_EXP_PROBSEVERE_20210604.232400.json"] 
 
-    ml_obj = MLGenerator(wofs_files, ps_files, ps_direc, wofs_direc, nc_outdir)
+    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, nc_outdir)
 
     #Do the generation 
     ml_obj.generate() 
