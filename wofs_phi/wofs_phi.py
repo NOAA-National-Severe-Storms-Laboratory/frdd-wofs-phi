@@ -221,6 +221,10 @@ class PS:
             @xarr is an xarray of all the relevant predictors
         '''
 
+        #TODO: Could add a list of past ProbSevereObject objects, and a list of 
+        #current ProbSevereObject objects. 
+
+
         self.gdf = gdf
         self.xarr = xarr
         
@@ -238,7 +242,11 @@ class PS:
             Ultimately creates a PS object with a gdf and xarrray of the relevant predictors 
         '''
 
-        #Current procedure: #TODO
+        #TODO (potential): Could create new class: ProbSevereObject, where each literal ProbSevere
+        #object is an object, and we set all the variables we want to extract. Then we'd have 1 method
+        #to convert this to a dataframe/geodataframe. Might be worth doing. So in the end we'd get
+        #a list of past ProbSevereObject objects and a list of current ProbSevereObject objects. 
+
         #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
         past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files)
 
