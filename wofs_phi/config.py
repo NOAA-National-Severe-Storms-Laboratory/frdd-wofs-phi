@@ -30,7 +30,7 @@ min_radius = 1.5 #in km (for probSevere objects)
 
 #radius (in km) for probSevere objects at the maximum extrapolation time 
 #generally taken to be 181 minutes. 
-max_radius = 1.5 #in km (for probSevere objects) #Used to be 30.0, but that was much too big
+max_radius = 20.0 #in km (for probSevere objects) #Used to be 30.0, but that was much too big
 
 
 conv_type = "square" #"square" or "circle" -- tells how to do the convolutions 
