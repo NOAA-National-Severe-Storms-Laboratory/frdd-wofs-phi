@@ -442,13 +442,9 @@ class ForecastSpecs:
         return time, date
 
 class TORP:
-    '''A class to store TORP objects. Can add predictors as we see fit, though for now
-    the only predictor included in the class is probability. If we want to add more, can
-    probably use a predictors dictionary rather than a million properties of the object.
-    '''
     
     def __init__(self, ID, prob, lat, lon, last_update_str):
-        self.prob = prob
+        self.predictors = {'prob': prob}
         self.lat = lat
         self.lon = lon
         self.long_id = ID
@@ -520,13 +516,14 @@ class TORP:
         be deleted once the product is created'''
         id_str = 'ID: ' + str(self.ID)
         coord_str = 'Location: (' + str(self.lat) + ', ' + str(self.lon) + ')'
-        prob_str = 'Prob Tor: ' + str(self.prob*100) + '%'
+        prob_str = 'Prob Tor: ' + str(self.predictors['prob']*100) + '%'
         time_str = 'Detected: ' + str(self.detection_time) + ',\nLast Updated: ' + str(self.last_update)
         
         print(id_str)
         print(coord_str)
         print(prob_str)
         print(time_str)
+        print()
     
     def add_buffer(self, buffer):
         '''Applies a geodesic point buffer to get a polygon (with many points to approximate
@@ -537,10 +534,6 @@ class TORP:
         self.geometry = utilities.geodesic_point_buffer(self.lon, self.lat, buffer)
 
 class TORP_List:
-    '''Creating a special class to store lists of torp objects. This class is different
-    from a regular array due to it's inserting functionality that will keep the TORP
-    objects ordered from newest to oldest. It also includes functionality for instantiating
-    a list of TORP objects from file names.'''
     
     def __init__(self, torp_list = None):
         if torp_list == None:
@@ -550,7 +543,9 @@ class TORP_List:
     
     def insert(self, torp):
         '''Insert a torp object into the list while maintaining newest to
-        oldest order'''
+        oldest order. This will allow for easy calculations about storms
+        changing since all TORP objects in a list refer to the same storm
+        at different times.'''
         
         if len(self.array) == 0:
             self.array = np.array([torp])
@@ -572,6 +567,7 @@ class TORP_List:
             del new_array
             self.check_for_old_objects()
     
+    #add functionality to delete itself from dictionary if all objects are 3+ hours old
     def check_for_old_objects(self):
         '''Get rid of objects from 3+ hours ago unless they are ongoing'''
         
@@ -585,18 +581,21 @@ class TORP_List:
                 del_indices.append(i)
             
         self.array = np.delete(self.array, del_indices)
-    
+                
     @staticmethod
-    def gen_torps_from_file(path, tl = None):
+    def gen_torp_dict_from_file(path, td = None):
         '''Given a torp csv file from a radar, this function will create
-        torp objects and add them to an ordered torp list'''
+        TORP objects and add them to a dictionary of TORP lists. Each list
+        will be full of TORP objects with the same long id but different
+        'last updated' times. This will allow for all TORP objects of the
+        same storm to be grouped together, but all storms separated'''
         
         #if no torp list was passed, create one to add new torp objects to,
         #otherwise, use passed torp list
-        if tl == None:
-            torp_list = TORP_List()
+        if td == None:
+            torp_dict = {}
         else:
-            torp_list = copy.deepcopy(tl)
+            torp_dict = copy.deepcopy(td)
         
         torp_df = pd.read_csv(path)
         IDs = torp_df.ID_date
@@ -606,22 +605,31 @@ class TORP_List:
         
         file = path.split('/')[-1]
         last_update = file.split('_')[0]
-        
         for i in range(len(IDs)):
             torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update)
-            torp_list.insert(torp)
-        
-        return torp_list
+            #if this torp object is already in the dictionary, add it to its existing torp list
+            if torp.long_id in torp_dict:
+                torp_list = torp_dict[torp.long_id]
+                torp_list.insert(torp)
+                torp_dict[torp.long_id] = torp_list
+            #otherwise, create a new torp list and add to dictionary
+            else:
+                torp_list = TORP_List()
+                torp_list.insert(torp)
+                torp_dict[torp.long_id] = torp_list
+            
+        return torp_dict
     
+    #change to generating a dictionary
     @staticmethod
-    def gen_full_list_from_file_list(paths):
+    def gen_full_dict_from_file_list(paths):
         for i, path in enumerate(paths):
             if i == 0:
-                torp_list = TORP_List.gen_torps_from_file(path)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path)
             else:
-                torp_list = TORP_List.gen_torps_from_file(path, torp_list)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, torp_dict)
         
-        return torp_list
+        return torp_dict
 
 def main():
     '''Main Method'''
