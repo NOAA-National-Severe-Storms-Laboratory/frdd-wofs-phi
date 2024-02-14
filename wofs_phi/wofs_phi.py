@@ -46,6 +46,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import xarray as xr
 import config as c
+import datetime
+import copy
+import utilities
 
 
 
@@ -761,7 +764,6 @@ class PS:
 
         return data  
 
-
 class ForecastSpecs: 
 
     '''Class to handle/store the forecast specifications.'''
@@ -1033,7 +1035,197 @@ class ForecastSpecs:
         time = time[0:4] 
     
 
-        return time, date 
+        return time, date
+
+class TORP:
+    
+    def __init__(self, ID, prob, lat, lon, last_update_str):
+        self.predictors = {'prob': prob}
+        self.lat = lat
+        self.lon = lon
+        self.long_id = ID
+        self.ID = int(self.long_id.split('_')[0])
+        self.detection_time = self.parse_date(self.long_id.split('_')[1])
+        self.last_update = self.parse_date(last_update_str)
+        self.add_buffer(c.torp_point_buffer) #change to use config file when i figure it out
+    
+    def parse_date(self, string):
+        '''The ID is in the form of (ID number)_YYYYMMDD-HHMMSS, this
+        creates a datetime object to store the time'''
+        
+        dt_arr = string.split('-')
+        date_str = dt_arr[0]
+        time_str = dt_arr[1]
+        year = int(date_str[0:4])
+        month = int(date_str[4:6])
+        day = int(date_str[6:])
+        hour = int(time_str[0:2])
+        minute = int(time_str[2:4])
+        second = int(time_str[4:])
+        
+        date_time = datetime.datetime(year, month, day, hour, minute, second)
+        
+        return date_time
+    
+    def __gt__(self, other):
+        '''This method overloads the greater than comparison for TORP_List sorting.
+        The TORP_List will store by date with newest at index 0. Thus, "greater than"
+        will be determined by which object's detection time is later. Tie is broken
+        by ID value.'''
+        
+        if self.detection_time > other.detection_time:
+            return True
+        elif (self.detection_time == other.detection_time) and (self.ID < other.ID):
+            return True
+        elif (self.detection_time == other.detection_time) and (self.ID == other.ID) and (self.last_update > other.last_update):
+            return True
+        else:
+            return False
+    
+    def __lt__(self, other):
+        '''This method overloads the less than comparison for TORP_List sorting.
+        The TORP_List will store by date with newest at index 0. Thus, "less than"
+        will be determined by which object's detection time is earlier. Tie is broken
+        by ID value.'''
+        
+        if self.detection_time < other.detection_time:
+            return True
+        elif (self.detection_time == other.detection_time) and (self.ID > other.ID):
+            return True
+        elif (self.detection_time == other.detection_time) and (self.ID == other.ID) and (self.last_update < other.last_update):
+            return True
+        else:
+            return False
+    
+    def __eq__(self, other):
+        '''This method will overload the equals to operator. If two TORP objects have
+        the same ID and detection time, then they can be used to track storm motion
+        and probability changes through time.'''
+        
+        if (self.detection_time == other.detection_time) and (self.ID == other.ID):
+            return True
+        else:
+            return False
+    
+    def show(self):
+        '''This is more of a helpful tool for the creation process, can probably
+        be deleted once the product is created'''
+        id_str = 'ID: ' + str(self.ID)
+        coord_str = 'Location: (' + str(self.lat) + ', ' + str(self.lon) + ')'
+        prob_str = 'Prob Tor: ' + str(self.predictors['prob']*100) + '%'
+        time_str = 'Detected: ' + str(self.detection_time) + ',\nLast Updated: ' + str(self.last_update)
+        
+        print(id_str)
+        print(coord_str)
+        print(prob_str)
+        print(time_str)
+        print()
+    
+    def add_buffer(self, buffer):
+        '''Applies a geodesic point buffer to get a polygon (with many points to approximate
+        a circle) centered around the lat/lon coords of the point using a geodesic buffer.
+        The buffer represents the buffer in km (for instance, to get a 15km buffer, enter
+        15 for buffer, not 15000.'''
+        
+        self.geometry = utilities.geodesic_point_buffer(self.lon, self.lat, buffer)
+
+class TORP_List:
+    
+    def __init__(self, torp_list = None):
+        if torp_list == None:
+            self.array = np.array([])
+        else:
+            self.array = torp_list
+    
+    def insert(self, torp):
+        '''Insert a torp object into the list while maintaining newest to
+        oldest order. This will allow for easy calculations about storms
+        changing since all TORP objects in a list refer to the same storm
+        at different times.'''
+        
+        if len(self.array) == 0:
+            self.array = np.array([torp])
+        else:
+            for i in range(len(self.array)):
+                if torp > self.array[i]:
+                    new_array = list(self.array[0:i])
+                    new_array.append(torp)
+                    new_array.extend(list(self.array[i:]))
+                    self.array = np.array(new_array)
+                    del new_array
+                    self.check_for_old_objects
+                    return
+            #append to the end of the array since it would have returned
+            #out of the function if it was to be inserted in the middle
+            new_array = list(self.array)
+            new_array.append(torp)
+            self.array = np.array(new_array)
+            del new_array
+            self.check_for_old_objects()
+    
+    #add functionality to delete itself from dictionary if all objects are 3+ hours old
+    def check_for_old_objects(self):
+        '''Get rid of objects from 3+ hours ago unless they are ongoing'''
+        
+        last_update = self.array[0].last_update
+        cutoff_time = last_update - datetime.timedelta(hours = 3)
+        
+        del_indices = []
+        for i in range(len(self.array)):
+            t = self.array[i]
+            if cutoff_time > t.last_update:
+                del_indices.append(i)
+            
+        self.array = np.delete(self.array, del_indices)
+                
+    @staticmethod
+    def gen_torp_dict_from_file(path, td = None):
+        '''Given a torp csv file from a radar, this function will create
+        TORP objects and add them to a dictionary of TORP lists. Each list
+        will be full of TORP objects with the same long id but different
+        'last updated' times. This will allow for all TORP objects of the
+        same storm to be grouped together, but all storms separated'''
+        
+        #if no torp list was passed, create one to add new torp objects to,
+        #otherwise, use passed torp list
+        if td == None:
+            torp_dict = {}
+        else:
+            torp_dict = copy.deepcopy(td)
+        
+        torp_df = pd.read_csv(path)
+        IDs = torp_df.ID_date
+        probs = torp_df.Probability
+        lats = torp_df.Lat
+        lons = torp_df.Lon
+        
+        file = path.split('/')[-1]
+        last_update = file.split('_')[0]
+        for i in range(len(IDs)):
+            torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update)
+            #if this torp object is already in the dictionary, add it to its existing torp list
+            if torp.long_id in torp_dict:
+                torp_list = torp_dict[torp.long_id]
+                torp_list.insert(torp)
+                torp_dict[torp.long_id] = torp_list
+            #otherwise, create a new torp list and add to dictionary
+            else:
+                torp_list = TORP_List()
+                torp_list.insert(torp)
+                torp_dict[torp.long_id] = torp_list
+            
+        return torp_dict
+    
+    #change to generating a dictionary
+    @staticmethod
+    def gen_full_dict_from_file_list(paths):
+        for i, path in enumerate(paths):
+            if i == 0:
+                torp_dict = TORP_List.gen_torp_dict_from_file(path)
+            else:
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, torp_dict)
+        
+        return torp_dict
 
 def main():
     '''Main Method'''
