@@ -11,10 +11,10 @@ from shapely.ops import transform
 from shapely.geometry import Point
 import geopandas as gpd
 
-def copy_torp(write_dir, pwd):
+def copy_torp(write_dir,usr, pwd):
     ssh_client=paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh_client.connect(hostname='myrorss2',username='ryan.martz',password=pwd)
+    ssh_client.connect(hostname='myrorss2',username=usr,password=pwd)
     sftp = ssh_client.open_sftp()
 
     for date in sftp.listdir('/work/thea.sandmael/radar'):
