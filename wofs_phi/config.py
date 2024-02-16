@@ -36,5 +36,5 @@ bottom_hour_inits = ["1730", "1830", "1930", "2030", "2130", "2230", "2330", "00
 next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500"]
 pkl_dir = "." #Will probably need to update later
 
-torp_point_buffer = 15
+torp_point_buffer = 7.5
  

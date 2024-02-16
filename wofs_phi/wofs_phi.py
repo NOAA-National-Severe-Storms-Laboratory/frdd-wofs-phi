@@ -449,27 +449,9 @@ class TORP:
         self.lon = lon
         self.long_id = ID
         self.ID = int(self.long_id.split('_')[0])
-        self.detection_time = self.parse_date(self.long_id.split('_')[1])
-        self.last_update = self.parse_date(last_update_str)
+        self.detection_time = utilities.parse_date(self.long_id.split('_')[1])
+        self.last_update = utilities.parse_date(last_update_str)
         self.add_buffer(c.torp_point_buffer) #change to use config file when i figure it out
-    
-    def parse_date(self, string):
-        '''The ID is in the form of (ID number)_YYYYMMDD-HHMMSS, this
-        creates a datetime object to store the time'''
-        
-        dt_arr = string.split('-')
-        date_str = dt_arr[0]
-        time_str = dt_arr[1]
-        year = int(date_str[0:4])
-        month = int(date_str[4:6])
-        day = int(date_str[6:])
-        hour = int(time_str[0:2])
-        minute = int(time_str[2:4])
-        second = int(time_str[4:])
-        
-        date_time = datetime.datetime(year, month, day, hour, minute, second)
-        
-        return date_time
     
     def __gt__(self, other):
         '''This method overloads the greater than comparison for TORP_List sorting.
@@ -532,6 +514,79 @@ class TORP:
         15 for buffer, not 15000.'''
         
         self.geometry = utilities.geodesic_point_buffer(self.lon, self.lat, buffer)
+    
+    def check_bounds(self, grid):
+        if (self.lat > grid.ne_lat) or (self.lon > grid.ne_lon) or (self.lat < grid.sw_lat) or (self.lon < grid.sw_lon):
+            return False
+        else:
+            return True
+    
+    def get_wofs_overlap_points(self, wofs_gdf, torp_dict, *args):
+        '''return the i, j components of a wofs grid that this torp object overlaps.
+        Can change this in the future to deal with the different valid time torp swaths'''
+        
+        torp_gdf = gpd.GeoDataFrame(index=[0], crs='epsg:4326', geometry=[self.geometry])
+        overlap_gdf = gpd.overlay(wofs_gdf, torp_gdf, how='intersection')
+        
+        self.overlap_i = overlap_gdf.wofs_i.values
+        self.overlap_j = overlap_gdf.wofs_j.values
+        
+        if len(args) == 0:
+            prev_overlap_gdf = overlap_gdf
+            prev_overlap_gdf['torp_id'] = self.long_id
+        else:
+            prev_overlap_gdf = args[0]
+            self.check_overlap(prev_overlap_gdf, torp_dict)
+            for i in range(len(self.overlap_i)):
+                try:
+                    row = np.where((wofs_gdf.wofs_i.values == self.overlap_i[i]) & (wofs_gdf.wofs_j.values == self.overlap_j[i]))[0][0]
+                    point = wofs_gdf.geometry.values[row]
+                    new_overlap_row = [{'wofs_i': self.overlap_i[i], 'wofs_j': self.overlap_j[i], 'geometry': point, 'torp_id': self.long_id}]
+                    new_overlap_row_gdf = gpd.GeoDataFrame(new_overlap_row)
+                    prev_overlap_gdf = pd.concat((prev_overlap_gdf,new_overlap_row_gdf.set_crs('epsg:4326')), axis=0)
+                except:
+                    raise Exception("Failed on coords: wofs_i: " + str(self.overlap_i[i]) + ", wofs_j: " + str(self.overlap_j[i]))
+        
+        return prev_overlap_gdf
+    
+    def check_overlap(self, overlap_gdf, torp_dict):
+        '''Find areas of overlap between TORP objects on the wofs grid'''
+        
+        existing_overlap_i = overlap_gdf.wofs_i.values
+        existing_overlap_j = overlap_gdf.wofs_j.values
+        
+        del_indices = []
+        for i in range(len(self.overlap_i)):
+            try:
+                row = np.where((existing_overlap_i == self.overlap_i[i]) & (existing_overlap_j == self.overlap_j[i]))[0][0]
+            except:
+                #no overlap at this point
+                continue
+            
+            overlapped_torp_id = overlap_gdf.torp_id.values[row]
+            overlapped_torp_list = torp_dict[overlapped_torp_id]
+            overlapped_torp = overlapped_torp_list.array[0] #get the most recent torp from this list
+            if self.assert_dominance(overlapped_torp):
+                #change the gdf
+                overlap_gdf.torp_id.values[row] = self.long_id
+            else:
+                #mark this point for deletion from the overlap points for this TORP object as another TORP will be represented
+                del_indices.append(i)
+        
+        self.overlap_i = np.delete(self.overlap_i, del_indices)
+        self.overlap_j = np.delete(self.overlap_j, del_indices)
+    
+    def assert_dominance(self, battle_torp):
+        '''Determine which TORP object will be represented at a grid point,
+        can add more levels of determination here as the TORP object is flushed out,
+        but for now, just higher probability works'''
+        
+        if self.predictors['prob'] > battle_torp.predictors['prob']:
+            return True
+        else:
+            return False
+        
+        return prev_overlap_gdf
 
 class TORP_List:
     
@@ -583,7 +638,7 @@ class TORP_List:
         self.array = np.delete(self.array, del_indices)
                 
     @staticmethod
-    def gen_torp_dict_from_file(path, td = None):
+    def gen_torp_dict_from_file(path, grid, td = None):
         '''Given a torp csv file from a radar, this function will create
         TORP objects and add them to a dictionary of TORP lists. Each list
         will be full of TORP objects with the same long id but different
@@ -606,7 +661,14 @@ class TORP_List:
         file = path.split('/')[-1]
         last_update = file.split('_')[0]
         for i in range(len(IDs)):
+            #if its not a string, its a nan object and there are no TORPs in this file
+            if not isinstance(IDs[0], str):
+                continue
+            #create the TORP object
             torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update)
+            #if it's out of bounds for the wofs grid of the day, then ignore it
+            if not torp.check_bounds(grid):
+                continue
             #if this torp object is already in the dictionary, add it to its existing torp list
             if torp.long_id in torp_dict:
                 torp_list = torp_dict[torp.long_id]
@@ -622,14 +684,35 @@ class TORP_List:
     
     #change to generating a dictionary
     @staticmethod
-    def gen_full_dict_from_file_list(paths):
+    def gen_full_dict_from_file_list(paths, grid):
         for i, path in enumerate(paths):
             if i == 0:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid)
             else:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path, torp_dict)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, torp_dict)
         
         return torp_dict
+    
+    @staticmethod
+    def gen_wofs_points_gdf(torp_dict):
+        '''This method will return a gdf with wofs_i and wofs_j values along with
+        the associated torp_id. This will allow for easily applying TORP object
+        predictors to each point on the wofs map.
+        
+        After extrapolation is implemented, this will need to be updated to specify
+        the lead time at which the resulting wofs points and torp_ids are valid.'''
+        
+        i = 0
+        for long_id in torp_dict:
+            l = td[long_id]
+            t = l.array[0]
+            if i == 0:
+                gdf = t.get_wofs_overlap_points(wofs_gdf, torp_dict)
+                i += 1
+            else:
+                gdf = t.get_wofs_overlap_points(wofs_gdf, torp_dict, gdf)
+        
+        return gdf
 
 def main():
     '''Main Method'''
