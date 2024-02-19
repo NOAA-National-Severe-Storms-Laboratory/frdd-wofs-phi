@@ -266,11 +266,41 @@ class PS:
         #Do the extrapolation 
         extrapolated_gdf = PS.do_extrapolation(past_ps_df, merged_gdf, specs)
 
+        print (extrapolated_gdf) 
+
+        #Restrict lead times to relevant (e.g., 30-min) period 
+        extrapolated_gdf = PS.filter_lead_time(extrapolated_gdf, specs) 
+
+        print ("****") 
+        print (extrapolated_gdf)
+
         #Map to wofs grid 
 
         #Convert to xarray 
 
         #Create new PS object -- will hold geodataframe of predictors and xarray 
+
+
+    @staticmethod
+    def filter_lead_time(in_gdf, fcst_specs):
+        '''
+            Only keeps geodataframe examples that are within the relevant lead 
+            times for this 30-min period. 
+            @in_gdf is the incoming geodataframe where each row is an example
+            @fcst_specs is a ForecastSpecs object for the current case
+        '''
+   
+        #self.ps_lead_time_start = ps_lead_time_start
+        #self.ps_lead_time_end
+        subset_gdf = in_gdf.loc[(in_gdf['t'] >= fcst_specs.ps_lead_time_start) & \
+                        (in_gdf['t'] <= fcst_specs.ps_lead_time_end)]
+
+        #Drop duplicates
+        subset_gdf.drop_duplicates(keep='first', inplace=True, ignore_index=True) 
+
+ 
+
+        return subset_gdf 
 
 
     @staticmethod
@@ -352,8 +382,6 @@ class PS:
 
             #Concatenate all subsets
             output_gdf = pd.concat(subsets, axis=0, ignore_index=True) 
-
-
 
     
         return output_gdf 
