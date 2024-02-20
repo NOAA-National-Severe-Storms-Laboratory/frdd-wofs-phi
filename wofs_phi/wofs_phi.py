@@ -93,10 +93,10 @@ class MLGenerator:
         #These will be determined principally by the wofs files we're dealing with
         forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files)
 
-        #Do PS preprocessing -- parallel track 1 -- should return a PS xarray 
+        #Do PS preprocessing -- parallel track 1 -- Returns a ps object that holds an xarray and 
+        #extrapolated geodataframe (xarray is what we likely most care about)
         ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
 
-        
         #Do WoFS preprocessing -- parallel track 2 
 
 
@@ -203,6 +203,177 @@ class Grid:
         
 
 
+class PS_WoFS:
+    ''' Handles the remapping of PS objects onto WoFS grid'''
+
+    
+    #Dataframe columns relevant to each hazard 
+    HAIL_COLS = ["wofs_j", "wofs_i", "t", "hail_prob", "age", "fourteen_change_hail", "thirty_change_hail" ]
+    TORN_COLS = ["wofs_j", "wofs_i", "t", "torn_prob", "age", "fourteen_change_torn", "thirty_change_torn"]
+    WIND_COLS = ["wofs_j", "wofs_i", "t", "wind_prob", "age", "fourteen_change_wind", "thirty_change_wind"] 
+   
+
+    #Dictionaries that handle the hazard-specific changing of variable keywords 
+    #to geodataframes (for remapping to wofs grid) 
+
+
+    HAIL_RENAME_DICT = {'hail_prob':'prob', 'fourteen_change_hail':'fourteen_change',\
+                                     'thirty_change_hail':'thirty_change'}
+
+    WIND_RENAME_DICT = {'wind_prob':'prob', 'fourteen_change_wind':'fourteen_change',\
+                                     'thirty_change_wind':'thirty_change'}
+
+    TORN_RENAME_DICT = {'torn_prob':'prob', 'fourteen_change_torn':'fourteen_change',\
+                                     'thirty_change_torn':'thirty_change'}
+
+
+
+    def __init__(self, nx, ny, hazard, probs, smoothed_probs, ages, lead_times, \
+                    fourteen_change, thirty_change):
+
+        self.nx = nx 
+        self.ny = ny
+        self.hazard = hazard
+        self.probs = probs
+        self.smoothed_probs = smoothed_probs
+        self.ages = ages
+        self.lead_times = lead_times
+        self.fourteen_change = fourteen_change
+        self.thirty_change = thirty_change 
+
+        return 
+
+
+    @classmethod
+    def new_PS_WoFS_from_Grid(cls, hazard_name, gridObj):
+        '''Creates new PS_WoFS object from Grid object
+            and hazard name. 
+            @hazard_name is the string hazard name
+            @gridObj is the Grid object (e.g., corresponding to WoFS grid) 
+            
+        '''
+
+        use_nx = gridObj.nx
+        use_ny = gridObj.ny
+        
+        #Initialize these fields to 0s 
+        initial_probs = np.zeros((use_ny, use_nx))
+        initial_smoothed_probs = np.zeros((use_ny, use_nx))
+        initial_fourteens = np.zeros((use_ny, use_nx))
+        initial_thirtys = np.zeros((use_ny, use_nx))
+        
+        #Initialize these fields to -1s
+        initial_ages = np.ones((use_ny, use_nx))*-1
+        initial_leads = np.ones((use_ny, use_nx))*-1
+        
+        #Create/return new PS_WoFS object 
+        new_object = PS_WoFS(use_nx, use_ny, hazard_name, initial_probs, \
+                    initial_smoothed_probs, initial_ages, initial_leads,\
+                    initial_fourteens, initial_thirtys)
+
+        return new_object
+
+    @classmethod
+    def filter_and_rename_gdf(cls, haz_name, gdf_to_change):
+        ''' 
+            Returns a geodataframe that is only relevant for the given hazard. 
+            i.e., removes irrelevant columns and renames the relevant ones to 
+            standardized names 
+            @haz_name is the string hazard name. 
+            @gdf_to_change is the geodataframe that needs to be changed
+        '''
+
+        if (haz_name == "hail"):
+            haz_subset = gdf_to_change[cls.HAIL_COLS]
+        #Rename the columns 
+            haz_subset.rename(columns = cls.HAIL_RENAME_DICT, inplace=True)
+
+        elif (haz_name == "wind"):
+            haz_subset = gdf_to_change[cls.WIND_COLS]
+            haz_subset.rename(columns = cls.WIND_RENAME_DICT, inplace=True) 
+    
+        elif (haz_name == "tornado"):
+            haz_subset = gdf_to_change[cls.TORN_COLS]
+            haz_subset.rename(columns = cls.TORN_RENAME_DICT, inplace=True) 
+
+
+        return haz_subset 
+
+
+    def update(self, points_to_change, geodf):
+        '''
+            Updates the instance based on a set of points to change (@points_to_change)
+            and an incoming geodataframe of PS examples
+
+            How do we want to assign a value? Want all values coming from the same storm
+            1. Highest Prob
+            2. Greatest 14-min (positive) change
+            3. Greatest 30-min (positive) change
+            4. Oldest storm
+            5. Smallest extrapolation 
+
+        '''
+        #First need to filter/rename the columns on geodataframe 
+        hazard_gdf = PS_WoFS.filter_and_rename_gdf(self.hazard, geodf) 
+
+        #Apply the probability threshold 
+        hazard_gdf = PS_WoFS.threshold_probability(hazard_gdf, c.ps_thresh)
+    
+        #TODO: Do the assignments/updates -- do point by point
+        for l in range(len(points_to_change)): 
+            y = points_to_change['wofs_j'].iloc[l]
+            x = points_to_change['wofs_i'].iloc[l]
+
+            df_subset = hazard_gdf.loc[(hazard_gdf['wofs_j'] == y) & (hazard_gdf['wofs_i'] == x)]
+            df_subset_sorted = df_subset.sort_values(['prob', 'fourteen_change', 'thirty_change', 'age', 't'], \
+                                        ascending=[False, False, False, False, True])
+
+            if (len(df_subset_sorted) > 0):
+                maxValue = df_subset_sorted.iloc[0,:]
+            
+                #Update the object. 
+                #How do we want to assign a value? Want all values coming from the same storm
+                #1. Highest Prob
+                #2. Greatest 14-min (positive) change
+                #3. Greatest 30-min (positive) change
+                #4. Oldest storm
+                #5. Smallest extrapolation 
+                self.probs[y,x] = maxValue['prob']
+                self.ages[y,x] = maxValue['age'] 
+                self.lead_times[y,x] = maxValue['t']
+                self.fourteen_change[y,x] = maxValue['fourteen_change'] 
+                self.thirty_change[y,x] = maxValue['thirty_change'] 
+
+        #Next, at the end we need to compute the smoothed prob field 
+        self.update_smoothed_probs()
+
+
+        return 
+
+    def update_smoothed_probs(self):
+        ''' Updates the instance's smoothed_probs attribute based on the probs attribute.
+            Applies 2d Gaussian kernel density function.
+        '''
+
+        #NOTE: Here sigma=3 is hardcoded. i.e., spatial smoothing parameter is 9km. (3x3km grid spacing) 
+        smoothed_probs = gaussian_filter(self.probs, sigma=3, order=0, mode='constant', truncate=3.5) 
+
+        self.smoothed_probs = smoothed_probs
+
+        return 
+        
+
+
+    @staticmethod
+    def threshold_probability(incoming_gdf, probThresh):
+        '''
+        Applies a probability threshold such that only rows in the @incoming_gdf
+        with 'prob' greater than or equal to @probThresh are retained. 
+        '''
+        return incoming_gdf.loc[incoming_gdf['prob'] >= probThresh]
+
+
+
 class PS:
     '''Handles the ProbSevere forecasts/processing'''
 
@@ -218,6 +389,12 @@ class PS:
 
     #Buffer to add around wofs points in m. 2.15km guarantees that we cover the full grid cell
     WOFS_BUFFER = 2.15*10**3 
+
+    #Final PS variable order 
+    FINAL_PS_VAR_ORDER = ['raw_probs', 'smooth_probs', 'leads', 'ages', 'changes14', 'changes30']
+    
+    #WoFS_PS keys corresponding to Final PS variable order 
+    FINAL_ORDER_WOFS_PS_KEYS = ['probs', 'smoothed_probs', 'lead_times', 'ages', 'fourteen_change', 'thirty_change']
 
     def __init__(self, gdf, xarr):
         ''' @gdf is a geodataframe containing all the relevant predictors
@@ -269,11 +446,146 @@ class PS:
         #Do the extrapolation 
         extrapolated_gdf = PS.do_extrapolation(past_ps_df, merged_gdf, specs)
 
-        #Map to wofs grid 
+        #Restrict lead times to relevant (e.g., 30-min) period 
+        extrapolated_gdf = PS.filter_lead_time(extrapolated_gdf, specs) 
+
+        #Map to wofs grid - obtain a list of PS_WoFS objects, one for each hazard. 
+        list_of_ps_wofs = PS.gdf_to_wofs(extrapolated_gdf, grid) 
 
         #Convert to xarray 
+        ps_xr = PS.ps_wofs_list_to_xr(list_of_ps_wofs, grid)
 
         #Create new PS object -- will hold geodataframe of predictors and xarray 
+        ps_object = PS(extrapolated_gdf, ps_xr) 
+
+
+        return ps_object
+
+
+    @classmethod
+    def ps_wofs_list_to_xr(cls, ps_wofs_list, wofs_grid):
+        '''Converts a list of PS_WoFS objects to a single xarray of 
+            ProbSevere predictors.
+            @ps_wofs_list is a list of PS_WoFS objects, 1 PS_WoFS object per hazard, in order
+                of c.final_hazards
+            @wofs_grid is a Grid object with the wofs stats 
+        '''
+        
+        nY = wofs_grid.ny 
+        nX = wofs_grid.nx 
+        
+
+        #Want to create a giant array and then create an xarray from that 
+        #FINAL_PS_VAR_ORDER = ['raw_probs', 'smooth_probs', 'leads', 'ages', 'changes14', 'changes30']
+
+        varnames = (["%s_%s" %(h,v) for h in c.final_hazards for v in cls.FINAL_PS_VAR_ORDER])
+
+        nH = len(ps_wofs_list) #should be number of hazards
+        nV = len(cls.FINAL_PS_VAR_ORDER) 
+
+        #Create a final array to hold all data, and then create an xarray from that.
+        #Want shape: (nY, nX, nV, nH) 
+
+        new_arr = np.zeros((nY, nX, nV, nH))
+
+        for v in range(nV):
+            for h in range(nH):
+                new_arr[:,:,v,h] = getattr(ps_wofs_list[h], cls.FINAL_ORDER_WOFS_PS_KEYS[v])
+
+
+    
+        #Now create x array -- Maybe make into a general method in future if needed. 
+        new_xr = xr.Dataset(data_vars=None, coords={"y": (range(nY)), "x": (range(nX))})
+        count = 0
+        for h in range(nH):
+            for v in range(nV):
+                varname = varnames[count]
+                new_xr[varname] = (["y", "x"], new_arr[:,:,v,h])
+                count += 1
+
+        return new_xr
+
+
+
+    @staticmethod
+    def gdf_to_wofs(in_gdf, fcst_grid):
+        '''Converts a geodataframe of example probSevere objects/extrapolation points to 
+            a list of PS_WoFS objects; these contain the set of gridded PS predictors. 
+            @Returns a list of PS_WoFS objects, with one list element for each hazard, in
+                order of c.final_hazards (i.e., the order set in the config.py file) 
+            @in_gdf is the incoming geodataframe where each row is an example/point --
+                it has been filtered to exclude the irrelevant lead times 
+            @fcst_grid is the current Grid object (i.e., the WoFS grid in this case) 
+        '''
+       
+        #Obtain list of wofs_points that need to be updated for this case
+        wofs_change_points = PS.get_wofs_change_points(in_gdf, fcst_grid) 
+
+ 
+        #We will create 3 PS_WoFS objects -> 1 for each hazard, which will hold the wofs grids 
+        #haz_names = c.final_hazards
+        
+        #We will create 3 PS_WoFS objects: 1 for each hazard       
+        ps_wofs_objects = [] 
+ 
+        for haz in c.final_hazards: 
+
+            #Initialize PS_WoFS object
+            ps_wofs = PS_WoFS.new_PS_WoFS_from_Grid(haz, fcst_grid) 
+            
+            #Update fields with list of points 
+            ps_wofs.update(wofs_change_points, in_gdf) 
+            
+            #append to list 
+            ps_wofs_objects.append(ps_wofs) 
+
+        #Return list of PS_WoFS objcts (should be one for each hazard, in order of c.final_hazards) 
+
+        return ps_wofs_objects
+
+
+    @staticmethod 
+    def get_wofs_change_points(ps_geodataframe, wofs_grid_obj):
+        '''Obtains the wofs points that need to be changed from the given ps_geodataframe
+            @ps_geodataframe is the incoming geodataframe 
+            @wofs_grid_obj is the incoming Grid object corresponding to wofs grid '''
+
+        #Number of y, x grid points (for convenience) 
+        Ny = wofs_grid_obj.ny
+        Nx = wofs_grid_obj.nx 
+        
+
+        unique_points = ps_geodataframe.drop_duplicates(subset=['wofs_j', 'wofs_i'], inplace=False, ignore_index=True)
+
+        #Also, we need to filter out the points that are outside of the wofs grid. Only save points between 0 and 299 
+        unique_points = unique_points.loc[(unique_points['wofs_j'] >= 0) & (unique_points['wofs_j'] < Ny) & \
+                                      (unique_points['wofs_i'] >= 0) & (unique_points['wofs_i'] < Nx)]
+
+
+        return unique_points  
+
+
+
+    @staticmethod
+    def filter_lead_time(in_gdf, fcst_specs):
+        '''
+            Only keeps geodataframe examples that are within the relevant lead 
+            times for this 30-min period. 
+            @in_gdf is the incoming geodataframe where each row is an example
+            @fcst_specs is a ForecastSpecs object for the current case
+        '''
+   
+        #self.ps_lead_time_start = ps_lead_time_start
+        #self.ps_lead_time_end
+        subset_gdf = in_gdf.loc[(in_gdf['t'] >= fcst_specs.ps_lead_time_start) & \
+                        (in_gdf['t'] <= fcst_specs.ps_lead_time_end)]
+
+        #Drop duplicates
+        subset_gdf.drop_duplicates(keep='first', inplace=True, ignore_index=True) 
+
+ 
+
+        return subset_gdf 
 
 
     @staticmethod
@@ -355,8 +667,6 @@ class PS:
 
             #Concatenate all subsets
             output_gdf = pd.concat(subsets, axis=0, ignore_index=True) 
-
-
 
     
         return output_gdf 
