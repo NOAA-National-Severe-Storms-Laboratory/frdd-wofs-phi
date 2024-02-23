@@ -46,8 +46,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import xarray as xr
 import config as c
-import datetime
-import copy
 import utilities
 
 
@@ -98,6 +96,8 @@ class MLGenerator:
         ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
 
         #Do WoFS preprocessing -- parallel track 2 
+        #TODO
+        wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
 
 
         #Concatenate parallel tracks 
@@ -109,9 +109,7 @@ class MLGenerator:
         #Convert to 1d predictor list 
 
 
-
         #Save predictors to file (if we're training) 
-
 
 
         #Load RF, run the predictors through RF 
@@ -121,6 +119,9 @@ class MLGenerator:
 
 
         pass
+
+
+
 
 
     @staticmethod
@@ -133,13 +134,302 @@ class MLGenerator:
 
 class Wofs:
     '''Handles the wofs forecasting/processing'''
+    
+    #Number of WoFS members 
+    N_MEMBERS = 18
+
+    #Will compute number of members exceeding this threshold 
+    DBZ_THRESH = 40 
+
+    #Legacy file naming conventions 
+    ENS_VARS = ["ws_80", "dbz_1km", "wz_0to2_instant", "uh_0to2_instant",  "uh_2to5", "w_up",\
+                     "w_1km", "w_down", "buoyancy", "div_10m", "10-500m_bulkshear", "ctt", "fed",\
+                     "rh_avg", "okubo_weiss", "hail", "hailcast", "freezing_level", "comp_dz"]
+
+    ENV_VARS = ["mslp", "u_10", "v_10", "td_2", "t_2", "qv_2", "theta_e", "omega", "psfc", \
+                            "pbl_mfc", "mid_level_lapse_rate", "low_level_lapse_rate" ]
+    
+    SVR_VARS = ["shear_u_0to1", "shear_v_0to1", "shear_u_0to3", "shear_v_0to3", "shear_u_0to6", "shear_v_0to6",\
+                      "srh_0to500", "srh_0to1", "srh_0to3", "cape_sfc", "cin_sfc", "lcl_sfc", "lfc_sfc",\
+                       "stp", "scp", "stp_srh0to500"]
+    
+
+    def __init__(self, gdf, xarr):
+        ''' Wofs object will contain a geodataframe of attributes and an xarray of predictors.
+            @gdf is the geodataframe
+            @xarr is the xarray
+
+        '''
 
 
-    def __init__(self):
-        #self.ny = ny
-        #self.nx = nx
+        self.gdf = gdf
+        self.xarr = xarr
 
         pass
+
+
+    @classmethod
+    def preprocess_wofs(cls, specs, grid, wofs_path, wofs_files):
+        ''' Handles the WoFS preprocessing--like the factory/blueprint method for the WoFS side of things.
+            @specs is the current ForecastSpecs object
+            @grid is the current Grid object (should be current WoFS grid
+            @wofs_path is the path to the wofs files 
+            @wofs_files is a list of wofs files that are considered
+        '''
+
+            #TODO: We may need to have WoFS_ALL, WoFS_ENV,  etc. Unclear how to handle.  
+
+        #Get the wofs fields and methods from text files (set in the config.py file)
+        wofs_fields = np.genfromtxt(c.wofs_fields_file, dtype='str') 
+        wofs_methods = np.genfromtxt(c.wofs_methods_file, dtype='str') 
+         
+        
+        #TODO: 
+        #First, obtain the list of WoFS_Agg objects for all/all standard variables 
+        
+        temporal_agg_list = WoFS_Agg.create_wofs_agg_list(wofs_fields, wofs_methods, specs, grid,\
+                                wofs_path, wofs_files)
+
+        return 
+
+
+class WoFS_Agg: 
+    '''
+        WoFS_Agg handles the temporal aggregation of wofs files 
+
+    '''
+
+    def __init__(self, wofs_var_name, ml_var_name, mem_index, \
+                    filepath, filenames, method, nx, ny, grid_time_list, agg_grid,
+                    threshold, legacy_filenames):
+        '''
+            @wofs_var_name is the name of the field as represented in wofs file
+            @ml_var_name is the name of the field as represented in the ML 
+            @mem_index is an integer corresponding to what member we care about
+                #0 is first member, 1 is second, 2 is third, etc. 
+                #-1 means we care about the ensemble mean 
+                #-2 means we care about the number of members exceeding a threshold
+                #(@threshold) 
+            @filepath is the path to the wofs files 
+            @filenames is the list of wofs filenames (no path) 
+            @method is the temporal aggregation method (e.g., "min", "max")
+            @nx is the number of x wofs points
+            @ny is the number of y wofs points 
+            @grid_time_list is the list of initial wofs grids at the relevant time
+                [list of np array (ny,nx) at each time over the period]
+            @agg_grid is the time-aggregated grid for the given variable  
+            @threshold is the threshold used to compute threshold exceedance 
+                (if applicable; for most variables, probably won't be applicable) 
+            @legacy_filenames is the list of filenames with the "ALL" replaced with, 
+                e.g., ENV, ENS, SWT, etc., as appropriate, based on the legacy
+                file naming convention. 
+        '''
+
+        self.wofs_var_name = wofs_var_name
+        self.ml_var_name = ml_var_name 
+        self.mem_index = mem_index
+        self.filepath = filepath 
+        self.filenames = filenames
+        self.method = method 
+        self.nx = nx 
+        self.ny = ny 
+        self.grid_time_list = grid_time_list
+        self.agg_grid = agg_grid  
+        self.threshold = threshold
+        self.legacy_filenames = legacy_filenames
+
+        return 
+
+
+
+    #TODO: Come back here.
+    @classmethod
+    def create_wofs_agg_list(cls, wofsFields, wofsMethods, specsObj, gridObj, \
+                                wofsPath, wofsFilenames):
+        ''' Creates/returns a list of (complete) WoFS_Agg objects (for each variable) 
+            @wofsFields is a list of wofs fields (from text file) 
+            @wofsMethods is a list of computation methods to apply to the wofs fields
+            @specsObj is the ForecastSpecs object for the current situation
+            @gridObj is the Grid object for the current situation. 
+            @wofsPath is the path to the wofs files 
+            @wofsFilenames is the list of wofs filenames (without path) 
+        '''
+
+        agg_files = [] #Will hold the list of time-aggregated WoFS_Agg objects
+
+        #Used to initialize WoFS_Agg object
+        initial_grid = np.zeros((gridObj.ny, gridObj.nx))
+
+        initial_grid_list = [initial_grid for g in wofsFilenames] 
+            
+
+        #Create an object for each variable 
+        for v in range(len(wofsFields)):
+        
+            #set ml variable name
+            ml_variable = wofsFields[v] 
+
+            #Set wofs variable name and member index from ml variable name 
+            wofs_variable, member_index, threshold_value = WoFS_Agg.find_var_attributes(ml_variable) 
+
+            #Set computational method to be used for aggregation
+            wofs_method = wofsMethods[v] 
+
+            #Get list of legacy filenames -- e.g., replace ALL with ENS, ENV, SVR, etc. 
+            #as was done in the old naming convention. 
+            legacyFilenames = WoFS_Agg.get_legacy_filenames(wofs_variable, wofsFilenames) 
+    
+            #Create an initial WoFS_Agg object
+            wofs_agg_obj = WoFS_Agg(wofs_variable, ml_variable, member_index, wofsPath, wofsFilenames,\
+                                wofs_method, gridObj.nx, gridObj.ny, initial_grid_list, initial_grid, \
+                                threshold_value, legacyFilenames)
+
+
+    
+            #Set the object's grid time list 
+            wofs_agg_obj.set_grid_time_list() 
+
+
+
+        return
+
+
+    def set_grid_time_list(self):
+        #Reads in the list of gridded data  over time from the relevant files
+
+        new_list = [] #Will hold the new list of gridded data (at each time step) 
+        for n in range(len(self.filenames)):
+            if (c.use_ALL_files == False):
+                filename = self.legacy_filenames[n]
+            else: 
+                filename = self.filenames[n] 
+
+                
+
+        #Read in files
+        
+
+
+        return 
+
+
+    #TODO
+    def update_agg_grid(self):
+
+        return 
+
+    @staticmethod
+    def get_legacy_filenames(wofs_var_name, wofs_files_list):
+        ''' Returns a list of wofs filenames in legacy format. 
+            e.g., replacing the "ALL" with "ENS" or "ENV", etc. 
+            @wofs_var_name is the string wofs variable name for 
+                the current variable
+            @wofs_files_list is the list of wofs filenames
+                (with the ALL convention) 
+        '''
+    
+        #Default
+        new_names = copy.deepcopy(wofs_files_list) 
+
+        if (wofs_var_name in Wofs.ENS_VARS):
+            new_names = [s.replace("ALL", "ENS") for s in wofs_files_list] 
+
+        elif (wofs_var_name in Wofs.ENV_VARS):
+            new_names = [s.replace("ALL", "ENV") for s in wofs_files_list]
+
+        elif (wofs_var_name in Wofs.SVR_VARS):
+            new_names = [s.replace("ALL", "SVR") for s in wofs_files_list] 
+            
+
+        return new_names
+
+
+    @staticmethod
+    def find_var_attributes(ml_var):
+        #Returns the appropriate wofs variable name, member index, and
+        #threshold value given the incoming ml variable name (@ml_var) 
+
+        #Default threshold
+        #threshold_val is the threshold we use for finding the 
+        #number of wofs members meeting or exceeding this value; 
+        #only used for a small number of variables, so most of
+        #the time, will be set to -999.0
+        threshold_val = -999.0
+        
+
+        if (ml_var == "m1_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 0
+        elif (ml_var == "m2_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 1
+        elif (ml_var == "m3_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 2
+        elif (ml_var == "m4_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 3
+        elif (ml_var == "m5_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 4
+        elif (ml_var == "m6_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 5
+        elif (ml_var == "m7_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 6
+        elif (ml_var == "m8_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 7
+        elif (ml_var == "m9_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 8
+        elif (ml_var == "m10_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 9
+        elif (ml_var == "m11_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 10
+        elif (ml_var == "m12_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 11
+        elif (ml_var == "m13_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 12
+        elif (ml_var == "m14_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 13
+        elif (ml_var == "m15_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 14
+        elif (ml_var == "m16_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 15
+        elif (ml_var == "m17_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 16
+        elif (ml_var == "m18_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 17
+        elif (ml_var == "prob40dbz"):
+            wofs_var = "comp_dz"
+            mem_index = -2
+            threshold_val = Wofs.DBZ_THRESH
+
+        #Default
+        else: 
+            wofs_var = copy.deepcopy(ml_var)     
+            mem_index = -1       
+
+        return wofs_var, mem_index, threshold_val
+
+
+    #TODO: 
+    @staticmethod
+    def read_grids():
+
+        return 
+
 
 
 class Grid: 
@@ -230,6 +520,9 @@ class PS_WoFS:
 
     def __init__(self, nx, ny, hazard, probs, smoothed_probs, ages, lead_times, \
                     fourteen_change, thirty_change):
+
+        #NOTE: Might potentially add storm motion east/south to this as well 
+                #(so it could be used with TORP)
 
         self.nx = nx 
         self.ny = ny
