@@ -47,6 +47,7 @@ from sklearn.model_selection import train_test_split
 import xarray as xr
 import config as c
 import utilities
+import predictor_extractor as pex
 
 
 
@@ -101,9 +102,22 @@ class MLGenerator:
         #TODO
         wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
 
-
         #Concatenate parallel tracks 
+        combined_xr = pex.xr_from_ps_and_wofs(ps, wofs) 
 
+        #Add predictors -- wofs lat/lon, wofs point, wofs initialization time
+       
+        #Add gridded fields: latitude and longitude and wofs x and y point 
+ 
+        #Add latitude and longitude points to xarray 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lats, "lat")
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lons, "lon") 
+        
+        #Add wofs x points and wofs y points
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "yvalue") 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "xvalue") 
+
+        print (combined_xr) 
 
         #Add convolutions 
 
@@ -120,10 +134,9 @@ class MLGenerator:
         #Save predictions to ncdf 
 
 
-        pass
+        return
 
-
-
+    
 
 
 class Wofs:
@@ -591,7 +604,7 @@ class Grid:
     '''Handles the (wofs) grid attributes.'''
 
 
-    def __init__(self, ny, nx, lats, lons, tlat1, tlat2, stlon, sw_lat, ne_lat, sw_lon, ne_lon): 
+    def __init__(self, ny, nx, lats, lons, tlat1, tlat2, stlon, sw_lat, ne_lat, sw_lon, ne_lon, ypts, xpts): 
         ''' @ny is number of y grid points,
             @nx is number of x grid points,
             @lats is list of latitudes 
@@ -603,6 +616,8 @@ class Grid:
             @ne_lat is the northeast corner latitude
             @sw_lon is the southwest corner longitude
             @ne_lon is the northeast corner longitude 
+            @ypts is a 2-d array of y values (ny,nx) 
+            @xpts is a 2-d array of x values (ny,nx) 
         '''
 
         self.ny = ny
@@ -616,6 +631,8 @@ class Grid:
         self.ne_lat = ne_lat
         self.sw_lon = sw_lon
         self.ne_lon = ne_lon
+        self.ypts = ypts
+        self.xpts = xpts 
 
 
     @classmethod
@@ -641,10 +658,32 @@ class Grid:
         SW_lon = wofsLons[0,0]
         NE_lon = wofsLons[-1,-1]
 
+        #Find arrays of x and y points 
+        xArr, yArr = Grid.get_xy_points(ny, nx) 
+
         #Create new wofs Grid object 
-        wofs_grid = Grid(ny, nx, wofsLats, wofsLons, Tlat1, Tlat2, Stlon, SW_lat, NE_lat, SW_lon, NE_lon)  
+        wofs_grid = Grid(ny, nx, wofsLats, wofsLons, Tlat1, Tlat2, Stlon, SW_lat, NE_lat, SW_lon, NE_lon, yArr, xArr)  
 
         return wofs_grid
+
+    @staticmethod 
+    def get_xy_points(num_y, num_x):
+        '''Gets a grid of x and y points given the 
+            number of points in the y direction (@num_y)
+            and number of points in the x direction (@num_x) 
+        '''
+
+        x_arr = np.zeros((num_y, num_x)) 
+        y_arr = np.zeros((num_y, num_x)) 
+    
+        for x in range(num_x):
+            for y in range(num_y): 
+                x_arr[y,x] = x
+                y_arr[y,x] = y 
+                
+
+
+        return x_arr, y_arr
         
 
 
