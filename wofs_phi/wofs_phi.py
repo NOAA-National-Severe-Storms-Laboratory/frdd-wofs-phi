@@ -101,8 +101,6 @@ class MLGenerator:
         #TODO
         wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
 
-        #print ("done preprocessing") 
-
 
         #Concatenate parallel tracks 
 
@@ -126,14 +124,6 @@ class MLGenerator:
 
 
 
-
-
-    @staticmethod
-    def get_full_path(pathToFiles, filenames):
-        '''Returns a list of the full path to a list of files given a path and a list of filenames.'''
-        full_list = ["%s/%s" %(pathToFiles, f) for f in filenames]
-    
-        return full_list  
 
 
 class Wofs:
