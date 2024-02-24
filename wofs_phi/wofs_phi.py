@@ -93,7 +93,9 @@ class MLGenerator:
 
         #Do PS preprocessing -- parallel track 1 -- Returns a ps object that holds an xarray and 
         #extrapolated geodataframe (xarray is what we likely most care about)
-        ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
+
+        #Skip for now for debugging the Wofs.preprocess_wofs method 
+        #ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
 
         #Do WoFS preprocessing -- parallel track 2 
         #TODO
@@ -184,11 +186,13 @@ class Wofs:
         wofs_methods = np.genfromtxt(c.wofs_methods_file, dtype='str') 
          
         
-        #TODO: 
         #First, obtain the list of WoFS_Agg objects for all/all standard variables 
         
         temporal_agg_list = WoFS_Agg.create_wofs_agg_list(wofs_fields, wofs_methods, specs, grid,\
                                 wofs_path, wofs_files)
+
+        #TODO: Come back here: Next we will put this stuff in a geopandas dataframe and xarray 
+
 
         return 
 
@@ -289,34 +293,166 @@ class WoFS_Agg:
             #Set the object's grid time list 
             wofs_agg_obj.set_grid_time_list() 
 
+            #Set the object's temporal aggregation -- TODO
+            wofs_agg_obj.set_temporal_aggregation()
+
+            #Add wofs_agg_obj to list 
+            agg_files.append(wofs_agg_obj) 
 
 
-        return
+
+        return agg_files
+
+    def set_temporal_aggregation(self):
+        ''' Sets an instance's agg_grid attribute based on the other attributes of 
+                the instance.'''
+
+
+        #Convert list to np array 
+        #Dimensions will be (number of times, number of members, y points, x points)
+        time_array = WoFS_Agg.time_list_to_array(self.grid_time_list) 
+
+        #How to proceed will depend on the instance's member index and method (i.e.,
+        #agg strategy. 
+
+      
+        #If mem_index is -1, we will take a time aggregation over the individual 
+        #members, followed by an ensemble mean at each grid point 
+        #(This will be for the majority of variables) 
+        if (self.mem_index == -1):
+            
+            #Take time aggregation depending on the instance's method 
+            if (self.method == "max"):
+                time_agg = np.amax(time_array, axis=0)
+            elif (self.method == "min"):
+                time_agg = np.amin(time_array, axis=0) 
+
+
+            #Take ensemble mean 
+            time_agg = np.mean(time_agg, axis=0) 
+
+            #Get rid of the masking element of the array    
+            time_agg = np.ma.getdata(time_agg) 
+
+
+        #In this case, we will take the aggregation of the individual member 
+        #indicated by the mem_index 
+        elif (self.mem_index >= 0):
+            
+            #First, extract the relevant member from time_array
+            member_array = time_array[:,self.mem_index,:,:]
+
+            #Take the time aggregation (depending on the instance's method) 
+            #of the single member 
+            if (self.method == "max"):
+                time_agg = np.amax(member_array, axis=0) 
+            elif (self.method == "min"):
+                time_agg = np.amin(member_array, axis=0) 
+
+        #In this case, we'd want to first apply the threshold to get a 
+        #"probability" at each point and time and take the max/min of 
+        #this probability over time.             
+        elif (self.mem_index == -2):
+    
+
+            #Apply the threshold to each member
+            probability_array = np.where(time_array >= self.threshold, 1/Wofs.N_MEMBERS, 0)
+
+            #Sum over the ensemble members
+            probability_array = np.sum(probability_array, axis=1) 
+
+            #Take the max/min over time
+            if (self.method == "max"):
+                time_agg = np.amax(probability_array, axis=0)
+            elif (self.method == "min"):
+                time_agg = np.amin(probability_array, axis=0)
+
+
+        #Convert to float32 
+        time_agg = np.float32(time_agg)
+
+        #Update the instance's attribute 
+        self.agg_grid = time_agg
+
+
+        return 
 
 
     def set_grid_time_list(self):
         #Reads in the list of gridded data  over time from the relevant files
 
-        new_list = [] #Will hold the new list of gridded data (at each time step) 
+        data_list = self.populate_data_list()
+
+        #Update the instance
+        self.grid_time_list = data_list
+
+
+        return 
+
+
+    def populate_data_list(self):
+        #Read in the data from the file at each time step 
+
+        var_data_list = [] 
         for n in range(len(self.filenames)):
+
+            full_filename = "%s/%s" %(self.filepath, self.filenames[n])
+            full_legacy_filename = "%s/%s" %(self.filepath, self.legacy_filenames[n])
+
             if (c.use_ALL_files == False):
-                filename = self.legacy_filenames[n]
-            else: 
-                filename = self.filenames[n] 
+                try: 
+                    data = nc.Dataset(full_legacy_filename) 
+                except FileNotFoundError:
+                    try: 
+                        #Try to load the ALL file if we can if the
+                        #legacy file isn't there 
+                        data = nc.Dataset(full_filename) 
+                    except FileNotFoundError:
+                        print ("Neither %s nor %s found. Moving on." \
+                                %(full_legacy_filename, full_filename))
+                        continue 
 
-                
 
-        #Read in files
-        
+            else: #if we are using the ALL files 
+                try: 
+                    data = nc.Dataset(full_filename)
+                except FileNotFoundError:
+                    print ("%s not found. Moving on." %full_filename) 
+                    continue 
 
 
-        return 
+            #Extract relevant variable 
+            var_data = data[self.wofs_var_name][:]
+            
+            #Append to list 
+            var_data_list.append(var_data) 
 
 
-    #TODO
-    def update_agg_grid(self):
+        return var_data_list 
 
-        return 
+
+    @staticmethod
+    def time_list_to_array(time_list):
+        '''Converts the list of wofs data (nm, ny, nx) to an array 
+            (nt, nm, ny, nx), where nt is the number of times
+            @time_list is the list of wofs data at successive lead times 
+
+        '''
+
+        nt = len(time_list)
+        shape_of_list_elements = np.shape(time_list[0]) 
+        nnm = shape_of_list_elements[0]
+        nny = shape_of_list_elements[1]
+        nnx = shape_of_list_elements[2] 
+
+        out_array = np.zeros((nt, nnm, nny, nnx))
+
+        for t in range(nt):
+            out_array[t, :, :,:] = time_list[t] 
+            
+
+
+        return out_array
 
     @staticmethod
     def get_legacy_filenames(wofs_var_name, wofs_files_list):
