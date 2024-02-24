@@ -95,11 +95,13 @@ class MLGenerator:
         #extrapolated geodataframe (xarray is what we likely most care about)
 
         #Skip for now for debugging the Wofs.preprocess_wofs method 
-        #ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
+        ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
 
         #Do WoFS preprocessing -- parallel track 2 
         #TODO
         wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
+
+        #print ("done preprocessing") 
 
 
         #Concatenate parallel tracks 
@@ -156,15 +158,15 @@ class Wofs:
                        "stp", "scp", "stp_srh0to500"]
     
 
-    def __init__(self, gdf, xarr):
+    def __init__(self, xarr):
         ''' Wofs object will contain a geodataframe of attributes and an xarray of predictors.
-            @gdf is the geodataframe
+            @gdf is the geodataframe -- exclude for now because we might not need
             @xarr is the xarray
 
         '''
 
 
-        self.gdf = gdf
+        #self.gdf = gdf
         self.xarr = xarr
 
         pass
@@ -193,8 +195,35 @@ class Wofs:
 
         #TODO: Come back here: Next we will put this stuff in a geopandas dataframe and xarray 
 
+        #print (temporal_agg_list) 
+        wofs_xr = Wofs.list_to_xr(temporal_agg_list) 
 
-        return 
+        #Create new wofs object that holds the xarray 
+        wofs_obj = Wofs(wofs_xr) 
+
+        return wofs_obj
+
+
+    @staticmethod 
+    def list_to_xr(obj_list):
+        '''Converts list of WoFS_Agg objects to an xarray with dimensions
+            (nY, nX)
+            @obj_list is a list of WoFS_Agg objects that will be used to 
+                create the xarray
+        '''
+
+        nY = obj_list[0].ny #number of y points
+        nX = obj_list[0].nx #number of x points 
+
+        #Create new x array dataset with dimensions (nY, nX)
+        new_xr = xr.Dataset(data_vars=None, coords={"y": (range(nY)), "x": (range(nX))})
+
+        for obj in obj_list: 
+            mlName = obj.ml_var_name
+            new_xr[mlName] = (["y", "x"], obj.agg_grid)
+             
+
+        return new_xr
 
 
 class WoFS_Agg: 
@@ -1984,7 +2013,7 @@ def main():
     
     wofs_files2 = ["wofs_ALL_11_20210605_0200_0255.nc", "wofs_ALL_12_20210605_0200_0300.nc",\
                     "wofs_ALL_13_20210605_0200_0305.nc", "wofs_ALL_14_20210605_0200_0310.nc",\
-                    "wofs_ALL_15_20210605_0200_0315.nc", "wofs_ALL_12_20210605_0200_0320.nc",\
+                    "wofs_ALL_15_20210605_0200_0315.nc", "wofs_ALL_16_20210605_0200_0320.nc",\
                     "wofs_ALL_17_20210605_0200_0325.nc"]
 
     ps_files = ["MRMS_EXP_PROBSEVERE_20210605.022400.json", "MRMS_EXP_PROBSEVERE_20210605.022200.json",\
