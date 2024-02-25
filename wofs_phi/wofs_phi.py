@@ -90,7 +90,7 @@ class MLGenerator:
 
         #Get the forecast specifications (e.g., start valid, end_valid, ps_lead time, wofs_lead_time, etc.) 
         #These will be determined principally by the wofs files we're dealing with
-        forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files)
+        forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files, c.all_fields_file, c.all_methods_file, c.single_pt_file)
 
         #Do PS preprocessing -- parallel track 1 -- Returns a ps object that holds an xarray and 
         #extrapolated geodataframe (xarray is what we likely most care about)
@@ -99,7 +99,6 @@ class MLGenerator:
         ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
 
         #Do WoFS preprocessing -- parallel track 2 
-        #TODO
         wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
 
         #Concatenate parallel tracks 
@@ -107,19 +106,28 @@ class MLGenerator:
 
         #Add predictors -- wofs lat/lon, wofs point, wofs initialization time
        
-        #Add gridded fields: latitude and longitude and wofs x and y point 
+        #Add gridded fields
  
-        #Add latitude and longitude points to xarray 
+        #Add latitude points to xarray 
         combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lats, "lat")
+
+        #Add longitude points to xarray 
         combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lons, "lon") 
         
-        #Add wofs x points and wofs y points
+        #Add wofs y points 
         combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "yvalue") 
+
+        #Add wofs x points
         combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "xvalue") 
 
-        print (combined_xr) 
 
-        #Add convolutions 
+        #Add convolutions -- TODO
+        #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
+        #Probably can compute stuff using the predictor_radii_km in config file 
+        #rf_sizes, grid spacing of wofs
+        conv_predictors_ds = pex.add_convolutions(combined_xr, c.conv_type, forecast_specs.allFields, \
+                                forecast_specs.allMethods, forecast_specs.singlePtFields, \
+                                c.predictor_radii_km, c.dx_km)
 
 
         #Convert to 1d predictor list 
@@ -278,7 +286,6 @@ class WoFS_Agg:
 
 
 
-    #TODO: Come back here.
     @classmethod
     def create_wofs_agg_list(cls, wofsFields, wofsMethods, specsObj, gridObj, \
                                 wofsPath, wofsFilenames):
@@ -909,10 +916,9 @@ class PS:
             Ultimately creates a PS object with a gdf and xarrray of the relevant predictors 
         '''
 
-        #TODO (potential): Could create new class: ProbSevereObject, where each literal ProbSevere
-        #object is an object, and we set all the variables we want to extract. Then we'd have 1 method
-        #to convert this to a dataframe/geodataframe. Might be worth doing. So in the end we'd get
-        #a list of past ProbSevereObject objects and a list of current ProbSevereObject objects. 
+        #NOTE: Might consider flipping the order of get_past_ps_df and get_ps_gdf 
+        #because it might allow us to only consider the past ps objects that have
+        #the same ID as one of the current objects; might reduce processing time. 
 
         #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
         past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files)
@@ -1568,7 +1574,7 @@ class ForecastSpecs:
     def __init__(self, start_valid, end_valid, start_valid_dt, end_valid_dt, \
                     wofs_init_time, wofs_init_time_dt, forecast_window, ps_init_time,\
                     ps_lead_time_start, ps_lead_time_end, ps_init_time_dt, ps_ages,\
-                    adjustable_radii_gridpoint):
+                    adjustable_radii_gridpoint, allFields, allMethods, singlePtFields):
 
         ''' @start valid is the start of the forecast valid period (4-character string)
             @end_valid is the end of the forecast valid period (4-character string) 
@@ -1598,6 +1604,10 @@ class ForecastSpecs:
                 how much extrapolation should be done at each extrapolation time from
                 PS file initiation time to the maximum extrapolation time (set in config
                 file)
+            @allFields is a list of all predictor fields (ml name notation)
+            @allMethods is a list of preprocessing methods corresponding to
+                allFields (e.g., max, min, abs, minbut) 
+            @singlePtFields is a list of the single point fields (ml name notation) 
 
         '''
 
@@ -1621,13 +1631,25 @@ class ForecastSpecs:
         self.ps_ages = ps_ages 
 
         self.adjustable_radii_gridpoint = adjustable_radii_gridpoint
+        
+        self.allFields = allFields
+        self.allMethods = allMethods
+        self.singlePtFields = singlePtFields
 
         pass
 
     @classmethod
-    def create_forecast_specs(cls, ps_files, wofs_files):
+    def create_forecast_specs(cls, ps_files, wofs_files, allFieldsFile, \
+                allMethodsFile, singlePtFile):
         '''Blueprint method for creating a ForecastSpecs object based on the list of
             PS files (@ps_files) and the list of wofs files (@wofs_files)  
+            @allFieldsFile is the name of the file containing the list of 
+                all predictor fields (ml name format) 
+            @allMethodsFile is the name of the file containing the list of 
+                preprocessing methods 
+            @singlePtFile is the name of the file containing the list of predictors
+                that will only be taken at a single point (the point of prediction);
+                i.e., predictors for which no convolutions will be done. 
         '''
 
         #Find start/end valid and wofs initialization time from wofs files 
@@ -1671,11 +1693,20 @@ class ForecastSpecs:
         adjustable_radii_gridpoint = ForecastSpecs.find_adjustable_radii(c.min_radius, c.max_radius,\
                                         c.dx_km, ps_end_lead_time, c.max_ps_extrap_time)
 
+
+        #Read in the all fields, all methods, and single point files
+        #allFieldsFile, #allMethodsFile, singlePtFile
+        all_fields = np.genfromtxt(allFieldsFile, dtype='str')
+        all_methods = np.genfromtxt(allMethodsFile, dtype='str') 
+        single_points = np.genfromtxt(singlePtFile, dtype='str') 
+    
+
         #Create ForecastSpecs object  
 
         new_specs = ForecastSpecs(start_valid, end_valid, start_valid_dt, end_valid_dt, wofs_init_time, \
                             wofs_init_time_dt, valid_window, ps_init_time, ps_start_lead_time, ps_end_lead_time,\
-                            ps_init_time_dt, ps_ages, adjustable_radii_gridpoint) 
+                            ps_init_time_dt, ps_ages, adjustable_radii_gridpoint,\
+                            all_fields, all_methods, single_points) 
 
         return new_specs
 
