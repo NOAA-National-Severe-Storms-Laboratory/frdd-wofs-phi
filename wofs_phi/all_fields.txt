@@ -33,7 +33,7 @@ psfc
 lcl_sfc
 hail
 freezing_level
-prob_40dbz
+prob40dbz
 m1_uh_2to5
 m2_uh_2to5
 m3_uh_2to5
@@ -52,12 +52,12 @@ m15_uh_2to5
 m16_uh_2to5
 m17_uh_2to5
 m18_uh_2to5
-torn_raw_probs
-torn_ages
-torn_leads
-torn_changes14
-torn_changes30
-torn_smooth_probs
+tornado_raw_probs
+tornado_ages
+tornado_leads
+tornado_changes14
+tornado_changes30
+tornado_smooth_probs
 wind_raw_probs
 wind_ages
 wind_leads

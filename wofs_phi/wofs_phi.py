@@ -120,7 +120,6 @@ class MLGenerator:
         #Add wofs x points
         combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "xvalue") 
 
-
         #Add convolutions -- TODO
         #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
         #Probably can compute stuff using the predictor_radii_km in config file 
@@ -129,6 +128,9 @@ class MLGenerator:
                                 forecast_specs.allMethods, forecast_specs.singlePtFields, \
                                 c.predictor_radii_km, c.dx_km)
 
+
+        print (conv_predictors_ds) 
+        quit() 
 
         #Convert to 1d predictor list 
 
@@ -203,8 +205,6 @@ class Wofs:
         
         temporal_agg_list = WoFS_Agg.create_wofs_agg_list(wofs_fields, wofs_methods, specs, grid,\
                                 wofs_path, wofs_files)
-
-        #TODO: Come back here: Next we will put this stuff in a geopandas dataframe and xarray 
 
         #print (temporal_agg_list) 
         wofs_xr = Wofs.list_to_xr(temporal_agg_list) 
