@@ -114,10 +114,10 @@ class MLGenerator:
         combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lons, "lon") 
         
         #Add wofs y points 
-        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "yvalue") 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "wofs_y") 
 
         #Add wofs x points
-        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "xvalue") 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "wofs_x") 
 
         #Add convolutions -- TODO
         #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
@@ -128,8 +128,13 @@ class MLGenerator:
                                 c.predictor_radii_km, c.dx_km)
 
 
-        print (conv_predictors_ds) 
-        quit() 
+
+        #Get 1d predictor names 
+        predictor_list = pex.get_predictor_list(forecast_specs.allFields, \
+                                forecast_specs.singlePtFields, c.predictor_radii_km, \
+                                c.extra_predictor_names)
+
+        print (predictor_list) 
 
         #Convert to 1d predictor list 
 

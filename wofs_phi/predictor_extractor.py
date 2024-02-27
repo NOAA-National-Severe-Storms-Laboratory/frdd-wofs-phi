@@ -211,4 +211,43 @@ def add_convolutions(in_xr, footprint_type, allFields, allMethods, \
 
     return in_xr
 
+def get_predictor_list(allFields, singlePtFields, pred_radii_km, \
+            extraPredictors):
+    '''Returns a full list of the predictors used -- including lat, lon, and all 
+        spatial convolutions. -- Also add wofs grid point and wofs initialization time 
+        @allFields is a list of all the predictor fields (in ml name
+            convention)
+        @singlePtFields is a list of the points where we will NOT
+            take convolutions; i.e., we will only use the value at
+            a single point. 
+        @pred_radii_km is a list of radii (in km) over which to 
+            take the convolutions
+        @extraPredictors is the list of extra predictors not originally included 
+            in the standard set of wofs or probSevere field list (e.g., lat, lon, 
+            wofs point, wofs initialization time, etc.) 
+    '''
+
+    new_names = [] #Will hold a list of the new names 
+
+    for r in range(len(pred_radii_km)):
+        radii_km = pred_radii_km[r]
+        for v in range(len(allFields)):
+            curr_name = allFields[v]
+            if (radii_km == 0): #If no spatial smoothing, there's no "r0" appended
+                new_names.append(curr_name)
+            else: #for the larger neighborhoods
+                if (curr_name not in singlePtFields):
+                    new_name = "%s_r%s" %(curr_name, radii_km)
+                    new_names.append(new_name)
+    
+
+    #Add single point/non-gridded predictors 
+    for pred in extraPredictors: 
+        new_names.append(pred) 
+
+    return new_names
+
+
+
+
 
