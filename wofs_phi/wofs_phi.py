@@ -48,9 +48,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import xarray as xr
 import config as c
-import datetime
-import copy
 import utilities
+import predictor_extractor as pex
 
 class MLGenerator: 
     ''' This class will handle the ML generator functions. '''
@@ -90,27 +89,52 @@ class MLGenerator:
 
         #Get the forecast specifications (e.g., start valid, end_valid, ps_lead time, wofs_lead_time, etc.) 
         #These will be determined principally by the wofs files we're dealing with
-        forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files)
+        forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files, c.all_fields_file, c.all_methods_file, c.single_pt_file)
 
-        #Do PS preprocessing -- parallel track 1 -- should return a PS xarray 
-        #ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
+        #Do PS preprocessing -- parallel track 1 -- Returns a ps object that holds an xarray and 
+        #extrapolated geodataframe (xarray is what we likely most care about)
 
-        
+        #Skip for now for debugging the Wofs.preprocess_wofs method 
+        ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
+
         #Do WoFS preprocessing -- parallel track 2 
-
+        wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
 
         #Concatenate parallel tracks 
+        combined_xr = pex.xr_from_ps_and_wofs(ps, wofs) 
+
+        #Add predictors -- wofs lat/lon, wofs point, wofs initialization time
+       
+        #Add gridded fields
+ 
+        #Add latitude points to xarray 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lats, "lat")
+
+        #Add longitude points to xarray 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lons, "lon") 
+        
+        #Add wofs y points 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "yvalue") 
+
+        #Add wofs x points
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "xvalue") 
+
+        #Add convolutions -- TODO
+        #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
+        #Probably can compute stuff using the predictor_radii_km in config file 
+        #rf_sizes, grid spacing of wofs
+        conv_predictors_ds = pex.add_convolutions(combined_xr, c.conv_type, forecast_specs.allFields, \
+                                forecast_specs.allMethods, forecast_specs.singlePtFields, \
+                                c.predictor_radii_km, c.dx_km)
 
 
-        #Add convolutions 
-
+        print (conv_predictors_ds) 
+        quit() 
 
         #Convert to 1d predictor list 
 
 
-
         #Save predictors to file (if we're training) 
-
 
 
         #Load RF, run the predictors through RF 
@@ -119,25 +143,472 @@ class MLGenerator:
         #Save predictions to ncdf 
 
 
-        pass  
+        return
 
 
 class Wofs:
     '''Handles the wofs forecasting/processing'''
+    
+    #Number of WoFS members 
+    N_MEMBERS = 18
+
+    #Will compute number of members exceeding this threshold 
+    DBZ_THRESH = 40 
+
+    #Legacy file naming conventions 
+    ENS_VARS = ["ws_80", "dbz_1km", "wz_0to2_instant", "uh_0to2_instant",  "uh_2to5", "w_up",\
+                     "w_1km", "w_down", "buoyancy", "div_10m", "10-500m_bulkshear", "ctt", "fed",\
+                     "rh_avg", "okubo_weiss", "hail", "hailcast", "freezing_level", "comp_dz"]
+
+    ENV_VARS = ["mslp", "u_10", "v_10", "td_2", "t_2", "qv_2", "theta_e", "omega", "psfc", \
+                            "pbl_mfc", "mid_level_lapse_rate", "low_level_lapse_rate" ]
+    
+    SVR_VARS = ["shear_u_0to1", "shear_v_0to1", "shear_u_0to3", "shear_v_0to3", "shear_u_0to6", "shear_v_0to6",\
+                      "srh_0to500", "srh_0to1", "srh_0to3", "cape_sfc", "cin_sfc", "lcl_sfc", "lfc_sfc",\
+                       "stp", "scp", "stp_srh0to500"]
+    
+
+    def __init__(self, xarr):
+        ''' Wofs object will contain a geodataframe of attributes and an xarray of predictors.
+            @gdf is the geodataframe -- exclude for now because we might not need
+            @xarr is the xarray
+
+        '''
 
 
-    def __init__(self):
-        #self.ny = ny
-        #self.nx = nx
+        #self.gdf = gdf
+        self.xarr = xarr
 
         pass
+
+
+    @classmethod
+    def preprocess_wofs(cls, specs, grid, wofs_path, wofs_files):
+        ''' Handles the WoFS preprocessing--like the factory/blueprint method for the WoFS side of things.
+            @specs is the current ForecastSpecs object
+            @grid is the current Grid object (should be current WoFS grid
+            @wofs_path is the path to the wofs files 
+            @wofs_files is a list of wofs files that are considered
+        '''
+
+            #TODO: We may need to have WoFS_ALL, WoFS_ENV,  etc. Unclear how to handle.  
+
+        #Get the wofs fields and methods from text files (set in the config.py file)
+        wofs_fields = np.genfromtxt(c.wofs_fields_file, dtype='str') 
+        wofs_methods = np.genfromtxt(c.wofs_methods_file, dtype='str') 
+         
+        
+        #First, obtain the list of WoFS_Agg objects for all/all standard variables 
+        
+        temporal_agg_list = WoFS_Agg.create_wofs_agg_list(wofs_fields, wofs_methods, specs, grid,\
+                                wofs_path, wofs_files)
+
+        #print (temporal_agg_list) 
+        wofs_xr = Wofs.list_to_xr(temporal_agg_list) 
+
+        #Create new wofs object that holds the xarray 
+        wofs_obj = Wofs(wofs_xr) 
+
+        return wofs_obj
+
+
+    @staticmethod 
+    def list_to_xr(obj_list):
+        '''Converts list of WoFS_Agg objects to an xarray with dimensions
+            (nY, nX)
+            @obj_list is a list of WoFS_Agg objects that will be used to 
+                create the xarray
+        '''
+
+        nY = obj_list[0].ny #number of y points
+        nX = obj_list[0].nx #number of x points 
+
+        #Create new x array dataset with dimensions (nY, nX)
+        new_xr = xr.Dataset(data_vars=None, coords={"y": (range(nY)), "x": (range(nX))})
+
+        for obj in obj_list: 
+            mlName = obj.ml_var_name
+            new_xr[mlName] = (["y", "x"], obj.agg_grid)
+             
+
+        return new_xr
+
+
+class WoFS_Agg: 
+    '''
+        WoFS_Agg handles the temporal aggregation of wofs files 
+
+    '''
+
+    def __init__(self, wofs_var_name, ml_var_name, mem_index, \
+                    filepath, filenames, method, nx, ny, grid_time_list, agg_grid,
+                    threshold, legacy_filenames):
+        '''
+            @wofs_var_name is the name of the field as represented in wofs file
+            @ml_var_name is the name of the field as represented in the ML 
+            @mem_index is an integer corresponding to what member we care about
+                #0 is first member, 1 is second, 2 is third, etc. 
+                #-1 means we care about the ensemble mean 
+                #-2 means we care about the number of members exceeding a threshold
+                #(@threshold) 
+            @filepath is the path to the wofs files 
+            @filenames is the list of wofs filenames (no path) 
+            @method is the temporal aggregation method (e.g., "min", "max")
+            @nx is the number of x wofs points
+            @ny is the number of y wofs points 
+            @grid_time_list is the list of initial wofs grids at the relevant time
+                [list of np array (ny,nx) at each time over the period]
+            @agg_grid is the time-aggregated grid for the given variable  
+            @threshold is the threshold used to compute threshold exceedance 
+                (if applicable; for most variables, probably won't be applicable) 
+            @legacy_filenames is the list of filenames with the "ALL" replaced with, 
+                e.g., ENV, ENS, SWT, etc., as appropriate, based on the legacy
+                file naming convention. 
+        '''
+
+        self.wofs_var_name = wofs_var_name
+        self.ml_var_name = ml_var_name 
+        self.mem_index = mem_index
+        self.filepath = filepath 
+        self.filenames = filenames
+        self.method = method 
+        self.nx = nx 
+        self.ny = ny 
+        self.grid_time_list = grid_time_list
+        self.agg_grid = agg_grid  
+        self.threshold = threshold
+        self.legacy_filenames = legacy_filenames
+
+        return 
+
+
+
+    @classmethod
+    def create_wofs_agg_list(cls, wofsFields, wofsMethods, specsObj, gridObj, \
+                                wofsPath, wofsFilenames):
+        ''' Creates/returns a list of (complete) WoFS_Agg objects (for each variable) 
+            @wofsFields is a list of wofs fields (from text file) 
+            @wofsMethods is a list of computation methods to apply to the wofs fields
+            @specsObj is the ForecastSpecs object for the current situation
+            @gridObj is the Grid object for the current situation. 
+            @wofsPath is the path to the wofs files 
+            @wofsFilenames is the list of wofs filenames (without path) 
+        '''
+
+        agg_files = [] #Will hold the list of time-aggregated WoFS_Agg objects
+
+        #Used to initialize WoFS_Agg object
+        initial_grid = np.zeros((gridObj.ny, gridObj.nx))
+
+        initial_grid_list = [initial_grid for g in wofsFilenames] 
+            
+
+        #Create an object for each variable 
+        for v in range(len(wofsFields)):
+        
+            #set ml variable name
+            ml_variable = wofsFields[v] 
+
+            #Set wofs variable name and member index from ml variable name 
+            wofs_variable, member_index, threshold_value = WoFS_Agg.find_var_attributes(ml_variable) 
+
+            #Set computational method to be used for aggregation
+            wofs_method = wofsMethods[v] 
+
+            #Get list of legacy filenames -- e.g., replace ALL with ENS, ENV, SVR, etc. 
+            #as was done in the old naming convention. 
+            legacyFilenames = WoFS_Agg.get_legacy_filenames(wofs_variable, wofsFilenames) 
+    
+            #Create an initial WoFS_Agg object
+            wofs_agg_obj = WoFS_Agg(wofs_variable, ml_variable, member_index, wofsPath, wofsFilenames,\
+                                wofs_method, gridObj.nx, gridObj.ny, initial_grid_list, initial_grid, \
+                                threshold_value, legacyFilenames)
+
+
+    
+            #Set the object's grid time list 
+            wofs_agg_obj.set_grid_time_list() 
+
+            #Set the object's temporal aggregation -- TODO
+            wofs_agg_obj.set_temporal_aggregation()
+
+            #Add wofs_agg_obj to list 
+            agg_files.append(wofs_agg_obj) 
+
+
+
+        return agg_files
+
+    def set_temporal_aggregation(self):
+        ''' Sets an instance's agg_grid attribute based on the other attributes of 
+                the instance.'''
+
+
+        #Convert list to np array 
+        #Dimensions will be (number of times, number of members, y points, x points)
+        time_array = WoFS_Agg.time_list_to_array(self.grid_time_list) 
+
+        #How to proceed will depend on the instance's member index and method (i.e.,
+        #agg strategy. 
+
+      
+        #If mem_index is -1, we will take a time aggregation over the individual 
+        #members, followed by an ensemble mean at each grid point 
+        #(This will be for the majority of variables) 
+        if (self.mem_index == -1):
+            
+            #Take time aggregation depending on the instance's method 
+            if (self.method == "max"):
+                time_agg = np.amax(time_array, axis=0)
+            elif (self.method == "min"):
+                time_agg = np.amin(time_array, axis=0) 
+
+
+            #Take ensemble mean 
+            time_agg = np.mean(time_agg, axis=0) 
+
+            #Get rid of the masking element of the array    
+            time_agg = np.ma.getdata(time_agg) 
+
+
+        #In this case, we will take the aggregation of the individual member 
+        #indicated by the mem_index 
+        elif (self.mem_index >= 0):
+            
+            #First, extract the relevant member from time_array
+            member_array = time_array[:,self.mem_index,:,:]
+
+            #Take the time aggregation (depending on the instance's method) 
+            #of the single member 
+            if (self.method == "max"):
+                time_agg = np.amax(member_array, axis=0) 
+            elif (self.method == "min"):
+                time_agg = np.amin(member_array, axis=0) 
+
+        #In this case, we'd want to first apply the threshold to get a 
+        #"probability" at each point and time and take the max/min of 
+        #this probability over time.             
+        elif (self.mem_index == -2):
+    
+
+            #Apply the threshold to each member
+            probability_array = np.where(time_array >= self.threshold, 1/Wofs.N_MEMBERS, 0)
+
+            #Sum over the ensemble members
+            probability_array = np.sum(probability_array, axis=1) 
+
+            #Take the max/min over time
+            if (self.method == "max"):
+                time_agg = np.amax(probability_array, axis=0)
+            elif (self.method == "min"):
+                time_agg = np.amin(probability_array, axis=0)
+
+
+        #Convert to float32 
+        time_agg = np.float32(time_agg)
+
+        #Update the instance's attribute 
+        self.agg_grid = time_agg
+
+
+        return 
+
+
+    def set_grid_time_list(self):
+        #Reads in the list of gridded data  over time from the relevant files
+
+        data_list = self.populate_data_list()
+
+        #Update the instance
+        self.grid_time_list = data_list
+
+
+        return 
+
+
+    def populate_data_list(self):
+        #Read in the data from the file at each time step 
+
+        var_data_list = [] 
+        for n in range(len(self.filenames)):
+
+            full_filename = "%s/%s" %(self.filepath, self.filenames[n])
+            full_legacy_filename = "%s/%s" %(self.filepath, self.legacy_filenames[n])
+
+            if (c.use_ALL_files == False):
+                try: 
+                    data = nc.Dataset(full_legacy_filename) 
+                except FileNotFoundError:
+                    try: 
+                        #Try to load the ALL file if we can if the
+                        #legacy file isn't there 
+                        data = nc.Dataset(full_filename) 
+                    except FileNotFoundError:
+                        print ("Neither %s nor %s found. Moving on." \
+                                %(full_legacy_filename, full_filename))
+                        continue 
+
+
+            else: #if we are using the ALL files 
+                try: 
+                    data = nc.Dataset(full_filename)
+                except FileNotFoundError:
+                    print ("%s not found. Moving on." %full_filename) 
+                    continue 
+
+
+            #Extract relevant variable 
+            var_data = data[self.wofs_var_name][:]
+            
+            #Append to list 
+            var_data_list.append(var_data) 
+
+
+        return var_data_list 
+
+
+    @staticmethod
+    def time_list_to_array(time_list):
+        '''Converts the list of wofs data (nm, ny, nx) to an array 
+            (nt, nm, ny, nx), where nt is the number of times
+            @time_list is the list of wofs data at successive lead times 
+
+        '''
+
+        nt = len(time_list)
+        shape_of_list_elements = np.shape(time_list[0]) 
+        nnm = shape_of_list_elements[0]
+        nny = shape_of_list_elements[1]
+        nnx = shape_of_list_elements[2] 
+
+        out_array = np.zeros((nt, nnm, nny, nnx))
+
+        for t in range(nt):
+            out_array[t, :, :,:] = time_list[t] 
+            
+
+
+        return out_array
+
+    @staticmethod
+    def get_legacy_filenames(wofs_var_name, wofs_files_list):
+        ''' Returns a list of wofs filenames in legacy format. 
+            e.g., replacing the "ALL" with "ENS" or "ENV", etc. 
+            @wofs_var_name is the string wofs variable name for 
+                the current variable
+            @wofs_files_list is the list of wofs filenames
+                (with the ALL convention) 
+        '''
+    
+        #Default
+        new_names = copy.deepcopy(wofs_files_list) 
+
+        if (wofs_var_name in Wofs.ENS_VARS):
+            new_names = [s.replace("ALL", "ENS") for s in wofs_files_list] 
+
+        elif (wofs_var_name in Wofs.ENV_VARS):
+            new_names = [s.replace("ALL", "ENV") for s in wofs_files_list]
+
+        elif (wofs_var_name in Wofs.SVR_VARS):
+            new_names = [s.replace("ALL", "SVR") for s in wofs_files_list] 
+            
+
+        return new_names
+
+
+    @staticmethod
+    def find_var_attributes(ml_var):
+        #Returns the appropriate wofs variable name, member index, and
+        #threshold value given the incoming ml variable name (@ml_var) 
+
+        #Default threshold
+        #threshold_val is the threshold we use for finding the 
+        #number of wofs members meeting or exceeding this value; 
+        #only used for a small number of variables, so most of
+        #the time, will be set to -999.0
+        threshold_val = -999.0
+        
+
+        if (ml_var == "m1_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 0
+        elif (ml_var == "m2_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 1
+        elif (ml_var == "m3_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 2
+        elif (ml_var == "m4_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 3
+        elif (ml_var == "m5_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 4
+        elif (ml_var == "m6_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 5
+        elif (ml_var == "m7_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 6
+        elif (ml_var == "m8_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 7
+        elif (ml_var == "m9_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 8
+        elif (ml_var == "m10_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 9
+        elif (ml_var == "m11_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 10
+        elif (ml_var == "m12_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 11
+        elif (ml_var == "m13_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 12
+        elif (ml_var == "m14_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 13
+        elif (ml_var == "m15_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 14
+        elif (ml_var == "m16_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 15
+        elif (ml_var == "m17_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 16
+        elif (ml_var == "m18_uh_2to5"):
+            wofs_var = "uh_2to5"
+            mem_index = 17
+        elif (ml_var == "prob40dbz"):
+            wofs_var = "comp_dz"
+            mem_index = -2
+            threshold_val = Wofs.DBZ_THRESH
+
+        #Default
+        else: 
+            wofs_var = copy.deepcopy(ml_var)     
+            mem_index = -1       
+
+        return wofs_var, mem_index, threshold_val
+
+
+    #TODO: 
+    @staticmethod
+    def read_grids():
+
+        return 
+
 
 
 class Grid: 
     '''Handles the (wofs) grid attributes.'''
 
 
-    def __init__(self, ny, nx, lats, lons, tlat1, tlat2, stlon, sw_lat, ne_lat, sw_lon, ne_lon): 
+    def __init__(self, ny, nx, lats, lons, tlat1, tlat2, stlon, sw_lat, ne_lat, sw_lon, ne_lon, ypts, xpts): 
         ''' @ny is number of y grid points,
             @nx is number of x grid points,
             @lats is list of latitudes 
@@ -149,6 +620,8 @@ class Grid:
             @ne_lat is the northeast corner latitude
             @sw_lon is the southwest corner longitude
             @ne_lon is the northeast corner longitude 
+            @ypts is a 2-d array of y values (ny,nx) 
+            @xpts is a 2-d array of x values (ny,nx) 
         '''
 
         self.ny = ny
@@ -162,6 +635,8 @@ class Grid:
         self.ne_lat = ne_lat
         self.sw_lon = sw_lon
         self.ne_lon = ne_lon
+        self.ypts = ypts
+        self.xpts = xpts 
 
 
     @classmethod
@@ -187,11 +662,207 @@ class Grid:
         SW_lon = wofsLons[0,0]
         NE_lon = wofsLons[-1,-1]
 
+        #Find arrays of x and y points 
+        xArr, yArr = Grid.get_xy_points(ny, nx) 
+
         #Create new wofs Grid object 
-        wofs_grid = Grid(ny, nx, wofsLats, wofsLons, Tlat1, Tlat2, Stlon, SW_lat, NE_lat, SW_lon, NE_lon)  
+        wofs_grid = Grid(ny, nx, wofsLats, wofsLons, Tlat1, Tlat2, Stlon, SW_lat, NE_lat, SW_lon, NE_lon, yArr, xArr)  
 
         return wofs_grid
+
+    @staticmethod 
+    def get_xy_points(num_y, num_x):
+        '''Gets a grid of x and y points given the 
+            number of points in the y direction (@num_y)
+            and number of points in the x direction (@num_x) 
+        '''
+
+        x_arr = np.zeros((num_y, num_x)) 
+        y_arr = np.zeros((num_y, num_x)) 
+    
+        for x in range(num_x):
+            for y in range(num_y): 
+                x_arr[y,x] = x
+                y_arr[y,x] = y 
+                
+
+
+        return x_arr, y_arr
         
+
+
+class PS_WoFS:
+    ''' Handles the remapping of PS objects onto WoFS grid'''
+
+    
+    #Dataframe columns relevant to each hazard 
+    HAIL_COLS = ["wofs_j", "wofs_i", "t", "hail_prob", "age", "fourteen_change_hail", "thirty_change_hail" ]
+    TORN_COLS = ["wofs_j", "wofs_i", "t", "torn_prob", "age", "fourteen_change_torn", "thirty_change_torn"]
+    WIND_COLS = ["wofs_j", "wofs_i", "t", "wind_prob", "age", "fourteen_change_wind", "thirty_change_wind"] 
+   
+
+    #Dictionaries that handle the hazard-specific changing of variable keywords 
+    #to geodataframes (for remapping to wofs grid) 
+
+
+    HAIL_RENAME_DICT = {'hail_prob':'prob', 'fourteen_change_hail':'fourteen_change',\
+                                     'thirty_change_hail':'thirty_change'}
+
+    WIND_RENAME_DICT = {'wind_prob':'prob', 'fourteen_change_wind':'fourteen_change',\
+                                     'thirty_change_wind':'thirty_change'}
+
+    TORN_RENAME_DICT = {'torn_prob':'prob', 'fourteen_change_torn':'fourteen_change',\
+                                     'thirty_change_torn':'thirty_change'}
+
+
+
+    def __init__(self, nx, ny, hazard, probs, smoothed_probs, ages, lead_times, \
+                    fourteen_change, thirty_change):
+
+        #NOTE: Might potentially add storm motion east/south to this as well 
+                #(so it could be used with TORP)
+
+        self.nx = nx 
+        self.ny = ny
+        self.hazard = hazard
+        self.probs = probs
+        self.smoothed_probs = smoothed_probs
+        self.ages = ages
+        self.lead_times = lead_times
+        self.fourteen_change = fourteen_change
+        self.thirty_change = thirty_change 
+
+        return 
+
+
+    @classmethod
+    def new_PS_WoFS_from_Grid(cls, hazard_name, gridObj):
+        '''Creates new PS_WoFS object from Grid object
+            and hazard name. 
+            @hazard_name is the string hazard name
+            @gridObj is the Grid object (e.g., corresponding to WoFS grid) 
+            
+        '''
+
+        use_nx = gridObj.nx
+        use_ny = gridObj.ny
+        
+        #Initialize these fields to 0s 
+        initial_probs = np.zeros((use_ny, use_nx))
+        initial_smoothed_probs = np.zeros((use_ny, use_nx))
+        initial_fourteens = np.zeros((use_ny, use_nx))
+        initial_thirtys = np.zeros((use_ny, use_nx))
+        
+        #Initialize these fields to -1s
+        initial_ages = np.ones((use_ny, use_nx))*-1
+        initial_leads = np.ones((use_ny, use_nx))*-1
+        
+        #Create/return new PS_WoFS object 
+        new_object = PS_WoFS(use_nx, use_ny, hazard_name, initial_probs, \
+                    initial_smoothed_probs, initial_ages, initial_leads,\
+                    initial_fourteens, initial_thirtys)
+
+        return new_object
+
+    @classmethod
+    def filter_and_rename_gdf(cls, haz_name, gdf_to_change):
+        ''' 
+            Returns a geodataframe that is only relevant for the given hazard. 
+            i.e., removes irrelevant columns and renames the relevant ones to 
+            standardized names 
+            @haz_name is the string hazard name. 
+            @gdf_to_change is the geodataframe that needs to be changed
+        '''
+
+        if (haz_name == "hail"):
+            haz_subset = gdf_to_change[cls.HAIL_COLS]
+        #Rename the columns 
+            haz_subset.rename(columns = cls.HAIL_RENAME_DICT, inplace=True)
+
+        elif (haz_name == "wind"):
+            haz_subset = gdf_to_change[cls.WIND_COLS]
+            haz_subset.rename(columns = cls.WIND_RENAME_DICT, inplace=True) 
+    
+        elif (haz_name == "tornado"):
+            haz_subset = gdf_to_change[cls.TORN_COLS]
+            haz_subset.rename(columns = cls.TORN_RENAME_DICT, inplace=True) 
+
+
+        return haz_subset 
+
+
+    def update(self, points_to_change, geodf):
+        '''
+            Updates the instance based on a set of points to change (@points_to_change)
+            and an incoming geodataframe of PS examples
+
+            How do we want to assign a value? Want all values coming from the same storm
+            1. Highest Prob
+            2. Greatest 14-min (positive) change
+            3. Greatest 30-min (positive) change
+            4. Oldest storm
+            5. Smallest extrapolation 
+
+        '''
+        #First need to filter/rename the columns on geodataframe 
+        hazard_gdf = PS_WoFS.filter_and_rename_gdf(self.hazard, geodf) 
+
+        #Apply the probability threshold 
+        hazard_gdf = PS_WoFS.threshold_probability(hazard_gdf, c.ps_thresh)
+    
+        #TODO: Do the assignments/updates -- do point by point
+        for l in range(len(points_to_change)): 
+            y = points_to_change['wofs_j'].iloc[l]
+            x = points_to_change['wofs_i'].iloc[l]
+
+            df_subset = hazard_gdf.loc[(hazard_gdf['wofs_j'] == y) & (hazard_gdf['wofs_i'] == x)]
+            df_subset_sorted = df_subset.sort_values(['prob', 'fourteen_change', 'thirty_change', 'age', 't'], \
+                                        ascending=[False, False, False, False, True])
+
+            if (len(df_subset_sorted) > 0):
+                maxValue = df_subset_sorted.iloc[0,:]
+            
+                #Update the object. 
+                #How do we want to assign a value? Want all values coming from the same storm
+                #1. Highest Prob
+                #2. Greatest 14-min (positive) change
+                #3. Greatest 30-min (positive) change
+                #4. Oldest storm
+                #5. Smallest extrapolation 
+                self.probs[y,x] = maxValue['prob']
+                self.ages[y,x] = maxValue['age'] 
+                self.lead_times[y,x] = maxValue['t']
+                self.fourteen_change[y,x] = maxValue['fourteen_change'] 
+                self.thirty_change[y,x] = maxValue['thirty_change'] 
+
+        #Next, at the end we need to compute the smoothed prob field 
+        self.update_smoothed_probs()
+
+
+        return 
+
+    def update_smoothed_probs(self):
+        ''' Updates the instance's smoothed_probs attribute based on the probs attribute.
+            Applies 2d Gaussian kernel density function.
+        '''
+
+        #NOTE: Here sigma=3 is hardcoded. i.e., spatial smoothing parameter is 9km. (3x3km grid spacing) 
+        smoothed_probs = gaussian_filter(self.probs, sigma=3, order=0, mode='constant', truncate=3.5) 
+
+        self.smoothed_probs = smoothed_probs
+
+        return 
+        
+
+
+    @staticmethod
+    def threshold_probability(incoming_gdf, probThresh):
+        '''
+        Applies a probability threshold such that only rows in the @incoming_gdf
+        with 'prob' greater than or equal to @probThresh are retained. 
+        '''
+        return incoming_gdf.loc[incoming_gdf['prob'] >= probThresh]
+
 
 
 class PS:
@@ -209,6 +880,12 @@ class PS:
 
     #Buffer to add around wofs points in m. 2.15km guarantees that we cover the full grid cell
     WOFS_BUFFER = 2.15*10**3 
+
+    #Final PS variable order 
+    FINAL_PS_VAR_ORDER = ['raw_probs', 'smooth_probs', 'leads', 'ages', 'changes14', 'changes30']
+    
+    #WoFS_PS keys corresponding to Final PS variable order 
+    FINAL_ORDER_WOFS_PS_KEYS = ['probs', 'smoothed_probs', 'lead_times', 'ages', 'fourteen_change', 'thirty_change']
 
     def __init__(self, gdf, xarr):
         ''' @gdf is a geodataframe containing all the relevant predictors
@@ -235,11 +912,10 @@ class PS:
                 working backward in time. 
             Ultimately creates a PS object with a gdf and xarrray of the relevant predictors 
         '''
-
-        #TODO (potential): Could create new class: ProbSevereObject, where each literal ProbSevere
-        #object is an object, and we set all the variables we want to extract. Then we'd have 1 method
-        #to convert this to a dataframe/geodataframe. Might be worth doing. So in the end we'd get
-        #a list of past ProbSevereObject objects and a list of current ProbSevereObject objects. 
+        
+        #NOTE: Might consider flipping the order of get_past_ps_df and get_ps_gdf 
+        #because it might allow us to only consider the past ps objects that have
+        #the same ID as one of the current objects; might reduce processing time. 
 
         #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
         past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files)
@@ -260,11 +936,145 @@ class PS:
         #Do the extrapolation 
         extrapolated_gdf = PS.do_extrapolation(past_ps_df, merged_gdf, specs)
 
-        #Map to wofs grid 
+        #Restrict lead times to relevant (e.g., 30-min) period 
+        extrapolated_gdf = PS.filter_lead_time(extrapolated_gdf, specs) 
+
+        #Map to wofs grid - obtain a list of PS_WoFS objects, one for each hazard. 
+        list_of_ps_wofs = PS.gdf_to_wofs(extrapolated_gdf, grid) 
 
         #Convert to xarray 
+        ps_xr = PS.ps_wofs_list_to_xr(list_of_ps_wofs, grid)
 
         #Create new PS object -- will hold geodataframe of predictors and xarray 
+        ps_object = PS(extrapolated_gdf, ps_xr) 
+
+        return ps_object
+
+
+    @classmethod
+    def ps_wofs_list_to_xr(cls, ps_wofs_list, wofs_grid):
+        '''Converts a list of PS_WoFS objects to a single xarray of 
+            ProbSevere predictors.
+            @ps_wofs_list is a list of PS_WoFS objects, 1 PS_WoFS object per hazard, in order
+                of c.final_hazards
+            @wofs_grid is a Grid object with the wofs stats 
+        '''
+        
+        nY = wofs_grid.ny 
+        nX = wofs_grid.nx 
+        
+
+        #Want to create a giant array and then create an xarray from that 
+        #FINAL_PS_VAR_ORDER = ['raw_probs', 'smooth_probs', 'leads', 'ages', 'changes14', 'changes30']
+
+        varnames = (["%s_%s" %(h,v) for h in c.final_hazards for v in cls.FINAL_PS_VAR_ORDER])
+
+        nH = len(ps_wofs_list) #should be number of hazards
+        nV = len(cls.FINAL_PS_VAR_ORDER) 
+
+        #Create a final array to hold all data, and then create an xarray from that.
+        #Want shape: (nY, nX, nV, nH) 
+
+        new_arr = np.zeros((nY, nX, nV, nH))
+
+        for v in range(nV):
+            for h in range(nH):
+                new_arr[:,:,v,h] = getattr(ps_wofs_list[h], cls.FINAL_ORDER_WOFS_PS_KEYS[v])
+
+
+    
+        #Now create x array -- Maybe make into a general method in future if needed. 
+        new_xr = xr.Dataset(data_vars=None, coords={"y": (range(nY)), "x": (range(nX))})
+        count = 0
+        for h in range(nH):
+            for v in range(nV):
+                varname = varnames[count]
+                new_xr[varname] = (["y", "x"], new_arr[:,:,v,h])
+                count += 1
+
+        return new_xr
+
+
+
+    @staticmethod
+    def gdf_to_wofs(in_gdf, fcst_grid):
+        '''Converts a geodataframe of example probSevere objects/extrapolation points to 
+            a list of PS_WoFS objects; these contain the set of gridded PS predictors. 
+            @Returns a list of PS_WoFS objects, with one list element for each hazard, in
+                order of c.final_hazards (i.e., the order set in the config.py file) 
+            @in_gdf is the incoming geodataframe where each row is an example/point --
+                it has been filtered to exclude the irrelevant lead times 
+            @fcst_grid is the current Grid object (i.e., the WoFS grid in this case) 
+        '''
+       
+        #Obtain list of wofs_points that need to be updated for this case
+        wofs_change_points = PS.get_wofs_change_points(in_gdf, fcst_grid) 
+
+ 
+        #We will create 3 PS_WoFS objects -> 1 for each hazard, which will hold the wofs grids 
+        #haz_names = c.final_hazards
+        
+        #We will create 3 PS_WoFS objects: 1 for each hazard       
+        ps_wofs_objects = [] 
+ 
+        for haz in c.final_hazards: 
+
+            #Initialize PS_WoFS object
+            ps_wofs = PS_WoFS.new_PS_WoFS_from_Grid(haz, fcst_grid) 
+            
+            #Update fields with list of points 
+            ps_wofs.update(wofs_change_points, in_gdf) 
+            
+            #append to list 
+            ps_wofs_objects.append(ps_wofs) 
+
+        #Return list of PS_WoFS objcts (should be one for each hazard, in order of c.final_hazards) 
+
+        return ps_wofs_objects
+
+
+    @staticmethod 
+    def get_wofs_change_points(ps_geodataframe, wofs_grid_obj):
+        '''Obtains the wofs points that need to be changed from the given ps_geodataframe
+            @ps_geodataframe is the incoming geodataframe 
+            @wofs_grid_obj is the incoming Grid object corresponding to wofs grid '''
+
+        #Number of y, x grid points (for convenience) 
+        Ny = wofs_grid_obj.ny
+        Nx = wofs_grid_obj.nx 
+        
+
+        unique_points = ps_geodataframe.drop_duplicates(subset=['wofs_j', 'wofs_i'], inplace=False, ignore_index=True)
+
+        #Also, we need to filter out the points that are outside of the wofs grid. Only save points between 0 and 299 
+        unique_points = unique_points.loc[(unique_points['wofs_j'] >= 0) & (unique_points['wofs_j'] < Ny) & \
+                                      (unique_points['wofs_i'] >= 0) & (unique_points['wofs_i'] < Nx)]
+
+
+        return unique_points  
+
+
+
+    @staticmethod
+    def filter_lead_time(in_gdf, fcst_specs):
+        '''
+            Only keeps geodataframe examples that are within the relevant lead 
+            times for this 30-min period. 
+            @in_gdf is the incoming geodataframe where each row is an example
+            @fcst_specs is a ForecastSpecs object for the current case
+        '''
+   
+        #self.ps_lead_time_start = ps_lead_time_start
+        #self.ps_lead_time_end
+        subset_gdf = in_gdf.loc[(in_gdf['t'] >= fcst_specs.ps_lead_time_start) & \
+                        (in_gdf['t'] <= fcst_specs.ps_lead_time_end)]
+
+        #Drop duplicates
+        subset_gdf.drop_duplicates(keep='first', inplace=True, ignore_index=True) 
+
+ 
+
+        return subset_gdf 
 
 
     @staticmethod
@@ -346,9 +1156,6 @@ class PS:
 
             #Concatenate all subsets
             output_gdf = pd.concat(subsets, axis=0, ignore_index=True) 
-
-
-
     
         return output_gdf 
 
@@ -762,7 +1569,8 @@ class ForecastSpecs:
     def __init__(self, start_valid, end_valid, start_valid_dt, end_valid_dt, \
                     wofs_init_time, wofs_init_time_dt, forecast_window, ps_init_time,\
                     ps_lead_time_start, ps_lead_time_end, ps_init_time_dt, ps_ages,\
-                    adjustable_radii_gridpoint):
+
+                    adjustable_radii_gridpoint, allFields, allMethods, singlePtFields):
 
         ''' @start valid is the start of the forecast valid period (4-character string)
             @end_valid is the end of the forecast valid period (4-character string) 
@@ -793,6 +1601,11 @@ class ForecastSpecs:
                 PS file initiation time to the maximum extrapolation time (set in config
                 file)
 
+            @allFields is a list of all predictor fields (ml name notation)
+            @allMethods is a list of preprocessing methods corresponding to
+                allFields (e.g., max, min, abs, minbut) 
+            @singlePtFields is a list of the single point fields (ml name notation) 
+
         '''
 
         self.start_valid = start_valid
@@ -815,13 +1628,26 @@ class ForecastSpecs:
         self.ps_ages = ps_ages 
 
         self.adjustable_radii_gridpoint = adjustable_radii_gridpoint
+        
+        self.allFields = allFields
+        self.allMethods = allMethods
+        self.singlePtFields = singlePtFields
 
         pass
 
     @classmethod
-    def create_forecast_specs(cls, ps_files, wofs_files):
+    
+    def create_forecast_specs(cls, ps_files, wofs_files, allFieldsFile, \
+                allMethodsFile, singlePtFile):
         '''Blueprint method for creating a ForecastSpecs object based on the list of
             PS files (@ps_files) and the list of wofs files (@wofs_files)  
+            @allFieldsFile is the name of the file containing the list of 
+                all predictor fields (ml name format) 
+            @allMethodsFile is the name of the file containing the list of 
+                preprocessing methods 
+            @singlePtFile is the name of the file containing the list of predictors
+                that will only be taken at a single point (the point of prediction);
+                i.e., predictors for which no convolutions will be done. 
         '''
 
         #Find start/end valid and wofs initialization time from wofs files 
@@ -865,11 +1691,20 @@ class ForecastSpecs:
         adjustable_radii_gridpoint = ForecastSpecs.find_adjustable_radii(c.min_radius, c.max_radius,\
                                         c.dx_km, ps_end_lead_time, c.max_ps_extrap_time)
 
+
+        #Read in the all fields, all methods, and single point files
+        #allFieldsFile, #allMethodsFile, singlePtFile
+        all_fields = np.genfromtxt(allFieldsFile, dtype='str')
+        all_methods = np.genfromtxt(allMethodsFile, dtype='str') 
+        single_points = np.genfromtxt(singlePtFile, dtype='str') 
+    
+
         #Create ForecastSpecs object  
 
         new_specs = ForecastSpecs(start_valid, end_valid, start_valid_dt, end_valid_dt, wofs_init_time, \
                             wofs_init_time_dt, valid_window, ps_init_time, ps_start_lead_time, ps_end_lead_time,\
-                            ps_init_time_dt, ps_ages, adjustable_radii_gridpoint) 
+                            ps_init_time_dt, ps_ages, adjustable_radii_gridpoint,\
+                            all_fields, all_methods, single_points) 
 
         return new_specs
 
@@ -1699,6 +2534,12 @@ def main():
                     "wofs_ALL_07_20210605_0200_0235.nc", "wofs_ALL_08_20210605_0200_0240.nc",\
                     "wofs_ALL_09_20210605_0200_0245.nc", "wofs_ALL_10_20210605_0200_0250.nc",\
                     "wofs_ALL_11_20210605_0200_0255.nc"] 
+    
+    wofs_files2 = ["wofs_ALL_11_20210605_0200_0255.nc", "wofs_ALL_12_20210605_0200_0300.nc",\
+                    "wofs_ALL_13_20210605_0200_0305.nc", "wofs_ALL_14_20210605_0200_0310.nc",\
+                    "wofs_ALL_15_20210605_0200_0315.nc", "wofs_ALL_16_20210605_0200_0320.nc",\
+                    "wofs_ALL_17_20210605_0200_0325.nc"]
+
     ps_files = ["MRMS_EXP_PROBSEVERE_20210605.022400.json", "MRMS_EXP_PROBSEVERE_20210605.022200.json",\
                 "MRMS_EXP_PROBSEVERE_20210605.021400.json", "MRMS_EXP_PROBSEVERE_20210605.021000.json",\
                 "MRMS_EXP_PROBSEVERE_20210605.015400.json", "MRMS_EXP_PROBSEVERE_20210605.014000.json",\
@@ -1708,7 +2549,7 @@ def main():
                 "MRMS_EXP_PROBSEVERE_20210604.235400.json", "MRMS_EXP_PROBSEVERE_20210604.234000.json",\
                 "MRMS_EXP_PROBSEVERE_20210604.232400.json"] 
 
-    ml_obj = MLGenerator(wofs_files, ps_files, ps_direc, wofs_direc, nc_outdir)
+    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, nc_outdir)
 
     #Do the generation 
     ml_obj.generate() 
