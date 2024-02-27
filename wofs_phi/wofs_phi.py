@@ -14,9 +14,11 @@
 #======================
 # Imports
 #======================
-from shapely.geometry import Point, MultiPolygon, Polygon
+from shapely.geometry import Point, MultiPolygon, Polygon, LineString
 from shapely.prepared import prep
 from shapely import geometry
+from pyproj import Transformer
+from shapely.ops import transform
 import numpy as np
 #from mpl_toolkits.basemap import Basemap
 import matplotlib
@@ -48,9 +50,6 @@ import xarray as xr
 import config as c
 import utilities
 import predictor_extractor as pex
-
-
-
 
 class MLGenerator: 
     ''' This class will handle the ML generator functions. '''
@@ -145,8 +144,6 @@ class MLGenerator:
 
 
         return
-
-    
 
 
 class Wofs:
@@ -915,7 +912,7 @@ class PS:
                 working backward in time. 
             Ultimately creates a PS object with a gdf and xarrray of the relevant predictors 
         '''
-
+        
         #NOTE: Might consider flipping the order of get_past_ps_df and get_ps_gdf 
         #because it might allow us to only consider the past ps objects that have
         #the same ID as one of the current objects; might reduce processing time. 
@@ -950,7 +947,6 @@ class PS:
 
         #Create new PS object -- will hold geodataframe of predictors and xarray 
         ps_object = PS(extrapolated_gdf, ps_xr) 
-
 
         return ps_object
 
@@ -1160,7 +1156,6 @@ class PS:
 
             #Concatenate all subsets
             output_gdf = pd.concat(subsets, axis=0, ignore_index=True) 
-
     
         return output_gdf 
 
@@ -1565,7 +1560,7 @@ class PS:
             print ("%s Extra data in file. Proceeding as if it had no information." %json_file)
             data = ""
 
-        return data  
+        return data
 
 class ForecastSpecs: 
 
@@ -1574,6 +1569,7 @@ class ForecastSpecs:
     def __init__(self, start_valid, end_valid, start_valid_dt, end_valid_dt, \
                     wofs_init_time, wofs_init_time_dt, forecast_window, ps_init_time,\
                     ps_lead_time_start, ps_lead_time_end, ps_init_time_dt, ps_ages,\
+
                     adjustable_radii_gridpoint, allFields, allMethods, singlePtFields):
 
         ''' @start valid is the start of the forecast valid period (4-character string)
@@ -1604,6 +1600,7 @@ class ForecastSpecs:
                 how much extrapolation should be done at each extrapolation time from
                 PS file initiation time to the maximum extrapolation time (set in config
                 file)
+
             @allFields is a list of all predictor fields (ml name notation)
             @allMethods is a list of preprocessing methods corresponding to
                 allFields (e.g., max, min, abs, minbut) 
@@ -1639,6 +1636,7 @@ class ForecastSpecs:
         pass
 
     @classmethod
+    
     def create_forecast_specs(cls, ps_files, wofs_files, allFieldsFile, \
                 allMethodsFile, singlePtFile):
         '''Blueprint method for creating a ForecastSpecs object based on the list of
@@ -1867,33 +1865,22 @@ class ForecastSpecs:
 
 class TORP:
     
-    def __init__(self, ID, prob, lat, lon, last_update_str):
+    def __init__(self, ID, prob, lat, lon, last_update_str, torp_df_row, radar):
         self.predictors = {'prob': prob}
-        self.lat = lat
-        self.lon = lon
+        self.lats = [lat]
+        self.lons = [lon]
+        self.Points = [Point(self.lons[0], self.lats[0])]
         self.long_id = ID
         self.ID = int(self.long_id.split('_')[0])
-        self.detection_time = self.parse_date(self.long_id.split('_')[1])
-        self.last_update = self.parse_date(last_update_str)
-        self.add_buffer(c.torp_point_buffer) #change to use config file when i figure it out
-    
-    def parse_date(self, string):
-        '''The ID is in the form of (ID number)_YYYYMMDD-HHMMSS, this
-        creates a datetime object to store the time'''
-        
-        dt_arr = string.split('-')
-        date_str = dt_arr[0]
-        time_str = dt_arr[1]
-        year = int(date_str[0:4])
-        month = int(date_str[4:6])
-        day = int(date_str[6:])
-        hour = int(time_str[0:2])
-        minute = int(time_str[2:4])
-        second = int(time_str[4:])
-        
-        date_time = datetime.datetime(year, month, day, hour, minute, second)
-        
-        return date_time
+        self.detection_time = utilities.parse_date(self.long_id.split('_')[1])
+        self.last_update = utilities.parse_date(last_update_str)
+        self.set_init_start()
+        self.set_time_to_init_start()
+        self.fill_predictors(torp_df_row)
+        self.set_storm_motion()
+        self.set_future_lats_lons()
+        self.update_buffers()
+        self.radar = torp_df_row['Radar']
     
     def __gt__(self, other):
         '''This method overloads the greater than comparison for TORP_List sorting.
@@ -1939,23 +1926,220 @@ class TORP:
         '''This is more of a helpful tool for the creation process, can probably
         be deleted once the product is created'''
         id_str = 'ID: ' + str(self.ID)
-        coord_str = 'Location: (' + str(self.lat) + ', ' + str(self.lon) + ')'
+        coord_str = 'Location: (' + str(self.lats[0]) + ', ' + str(self.lons[0]) + ')'
         prob_str = 'Prob Tor: ' + str(self.predictors['prob']*100) + '%'
         time_str = 'Detected: ' + str(self.detection_time) + ',\nLast Updated: ' + str(self.last_update)
+        age_str = 'Age: ' + str(self.predictors['age']) + ' minutes'
+        prob_change_1_str = str(c.torp_prob_change_1) + '-Minute Probability Change: ' + str(self.predictors['p_change_' + str(c.torp_prob_change_1) + '_min']*100) + '%'
+        prob_change_2_str = str(c.torp_prob_change_2) + '-Minute Probability Change: ' + str(self.predictors['p_change_' + str(c.torp_prob_change_2) + '_min']*100) + '%'
         
         print(id_str)
         print(coord_str)
         print(prob_str)
         print(time_str)
+        print(age_str)
+        print(prob_change_1_str)
+        print(prob_change_2_str)
         print()
     
-    def add_buffer(self, buffer):
+    def set_storm_motion(self):
+        '''return storm motion in m/s'''
+        self.storm_motion_north = 20
+        self.storm_motion_east = 10
+    
+    def set_future_lats_lons(self):
+        minutes_to_0 = self.time_to_init_start + 25
+        x_dist = self.storm_motion_east * (minutes_to_0 * 60)/1000
+        y_dist = self.storm_motion_north * (minutes_to_0 * 60)/1000
+        
+        for i in range(1, 8):
+            self.lons.append(utilities.haversine_get_lon(self.lats[i-1], self.lons[i-1], x_dist))
+            self.lats.append(utilities.haversine_get_lat(self.lats[i-1], self.lons[i-1], self.lons[i], y_dist))
+            self.Points.append(Point(self.lons[i], self.lats[i]))
+            
+            x_dist = self.storm_motion_east * (30 * 60)/1000
+            y_dist = self.storm_motion_north * (30 * 60)/1000
+    
+    def fill_predictors(self, row):
+        for predictor in c.torp_predictors:
+            try:
+                self.predictors[predictor] = row[predictor]
+            except:
+                if predictor == 'RangeInterval':
+                    self.predictors[predictor] = row['rng_int']
+    
+    def set_init_start(self):
+        curr_hour = self.last_update.hour
+        curr_min = self.last_update.minute
+        curr_sec = self.last_update.second
+        if (curr_min < 30) or (curr_min == 30 and curr_sec == 0):
+            self.init_start = self.last_update.replace(minute = 30, second = 0)
+        else:
+            if curr_hour < 23:
+                self.init_start = self.last_update.replace(hour = curr_hour + 1, minute = 0, second = 0)
+            else:
+                self.init_start = self.last_update.replace(hour = 0, minute = 0, second = 0)
+    
+    def set_time_to_init_start(self):
+        self.time_to_init_start = ((self.init_start - self.last_update).seconds)/60
+    
+    def update_buffers(self):
         '''Applies a geodesic point buffer to get a polygon (with many points to approximate
         a circle) centered around the lat/lon coords of the point using a geodesic buffer.
         The buffer represents the buffer in km (for instance, to get a 15km buffer, enter
         15 for buffer, not 15000.'''
         
-        self.geometry = utilities.geodesic_point_buffer(self.lon, self.lat, buffer)
+        self.geometrys = [utilities.geodesic_point_buffer(self.lons[0], self.lats[0], c.torp_point_buffer)]
+        
+        for i in range(2, 8):
+            line = LineString([self.Points[i-1], self.Points[i]])
+            
+            local_azimuthal_projection = "+proj=aeqd +R=6371000 +units=m +lat_0={} +lon_0={}".format((self.lats[i-1] + self.lats[i]) / 2, (self.lons[i-1] + self.lons[i]) / 2)
+            
+            wgs84_to_aeqd = Transformer.from_proj('+proj=longlat +datum=WGS84 +no_defs',local_azimuthal_projection)
+            aeqd_to_wgs84 = Transformer.from_proj(local_azimuthal_projection,'+proj=longlat +datum=WGS84 +no_defs')
+
+            line_transformed = transform(wgs84_to_aeqd.transform, line)
+
+            buffer = line_transformed.buffer(c.torp_point_buffer * 1000)
+            line_wgs84 = transform(aeqd_to_wgs84.transform, buffer)
+            
+            self.geometrys.append(line_wgs84)
+        #self.geometrys.append(0-30)
+        #self.geometrys.append(30-60)
+        #self.geometrys.append(60-90)
+        #self.geometrys.append(90-120)
+        #self.geometrys.append(120-150)
+        #self.geometrys.append(150-180)
+    
+    def check_bounds(self, grid):
+        if (self.lats[0] > grid.ne_lat) or (self.lons[0] > grid.ne_lon) or (self.lats[0] < grid.sw_lat) or (self.lons[0] < grid.sw_lon):
+            return False
+        else:
+            return True
+    
+    def get_wofs_overlap_points(self, wofs_gdf, torp_dict, lead_time_int, *args):
+        '''return the i, j components of a wofs grid that this torp object overlaps.
+        Can change this in the future to deal with the different valid time torp swaths'''
+        
+        torp_gdf = gpd.GeoDataFrame(index=[0], crs='epsg:4326', geometry=[self.geometrys[lead_time_int]])
+        overlap_gdf = gpd.overlay(wofs_gdf, torp_gdf, how='intersection')
+        
+        self.overlap_i = overlap_gdf.wofs_i.values
+        self.overlap_j = overlap_gdf.wofs_j.values
+        
+        if len(args) == 0:
+            prev_overlap_gdf = overlap_gdf
+            prev_overlap_gdf['torp_id'] = self.long_id
+        else:
+            prev_overlap_gdf = args[0]
+            self.check_overlap(prev_overlap_gdf, torp_dict)
+            for i in range(len(self.overlap_i)):
+                try:
+                    row = np.where((wofs_gdf.wofs_i.values == self.overlap_i[i]) & (wofs_gdf.wofs_j.values == self.overlap_j[i]))[0][0]
+                    point = wofs_gdf.geometry.values[row]
+                    new_overlap_row = [{'wofs_i': self.overlap_i[i], 'wofs_j': self.overlap_j[i], 'geometry': point, 'torp_id': self.long_id}]
+                    new_overlap_row_gdf = gpd.GeoDataFrame(new_overlap_row)
+                    prev_overlap_gdf = pd.concat((prev_overlap_gdf,new_overlap_row_gdf.set_crs('epsg:4326')), axis=0)
+                except:
+                    raise Exception("Failed on coords: wofs_i: " + str(self.overlap_i[i]) + ", wofs_j: " + str(self.overlap_j[i]))
+        
+        return prev_overlap_gdf
+    
+    def check_overlap(self, overlap_gdf, torp_dict):
+        '''Find areas of overlap between TORP objects on the wofs grid'''
+        
+        existing_overlap_i = overlap_gdf.wofs_i.values
+        existing_overlap_j = overlap_gdf.wofs_j.values
+        
+        del_indices = []
+        for i in range(len(self.overlap_i)):
+            try:
+                row = np.where((existing_overlap_i == self.overlap_i[i]) & (existing_overlap_j == self.overlap_j[i]))[0][0]
+            except:
+                #no overlap at this point
+                continue
+            
+            overlapped_torp_id = overlap_gdf.torp_id.values[row]
+            overlapped_torp_list = torp_dict[overlapped_torp_id]
+            overlapped_torp = overlapped_torp_list.array[0] #get the most recent torp from this list
+            if self.assert_dominance(overlapped_torp):
+                #change the gdf
+                overlap_gdf.torp_id.values[row] = self.long_id
+            else:
+                #mark this point for deletion from the overlap points for this TORP object as another TORP will be represented
+                del_indices.append(i)
+        
+        self.overlap_i = np.delete(self.overlap_i, del_indices)
+        self.overlap_j = np.delete(self.overlap_j, del_indices)
+    
+    def assert_dominance(self, battle_torp):
+        '''Determine which TORP object will be represented at a grid point,
+        can add more levels of determination here as the TORP object is flushed out,
+        but for now, just higher probability works'''
+        
+        if self.predictors['prob'] > battle_torp.predictors['prob']:
+            return True
+        else:
+            return False
+    
+    def find_link(self, torp_dict, cutoff):
+        '''Finds the link (if one exists) for a torp object across 00z'''
+        
+        link_torp = None
+        
+        eligible_tls = []
+        eligible_tl_dists = []
+        
+        for t_id in torp_dict:
+            if t_id == self.long_id:
+                continue
+            tl = torp_dict[t_id]
+            back = tl.array[-1]
+            
+            #does the linkable torp start within 10 minutes of 00z?
+            if (back.last_update - cutoff).seconds/60 > 10:
+                continue
+            
+            #is there a small enough time delta to consider linking the objects?
+            time_delta = back.detection_time - self.last_update
+            if (time_delta.seconds/60 > c.torp_max_time_skip) or (time_delta.seconds == 0):
+                continue
+            
+            #are they from the same radar?
+            if not (back.radar == self.radar):
+                continue
+            
+            td_sec = time_delta.seconds
+            north_motion = (self.storm_motion_north * td_sec)/1000
+            east_motion = (self.storm_motion_east * td_sec)/1000
+            
+            extrap_lon = utilities.haversine_get_lon(self.lats[0], self.lons[0], east_motion)
+            extrap_lat = utilities.haversine_get_lat(self.lats[0], self.lons[0], extrap_lon, north_motion)
+            
+            dist = utilities.haversine(extrap_lat, extrap_lon, back.lats[0], back.lons[0])
+            
+            #if within 4.5km --> they are linked since it is not closer to any other linkable torp object
+            #if in 4.5-9 range --> they are linkable, but we need to check to make sure that no other
+            #linkable torp object is closer
+            #if 9+km away, then its feasible that they are separate torp objects, cannot link
+            if dist < 4.5:
+                return tl
+            elif (dist >= 4.5) and (dist < 9):
+                eligible_tls.append(tl)
+                eligible_tl_dists.append(dist)
+            else:
+                continue
+            
+        if len(eligible_tls) == 0:
+            return None
+        
+        eligible_tls = np.array(eligible_tls)
+        eligible_tl_dists = np.array(eligible_tl_dists)
+        
+        min_dist_index = np.where(eligible_tl_dists == np.min(eligible_tl_dists))[0][0]
+        
+        return eligible_tls[min_dist_index]
 
 class TORP_List:
     
@@ -1982,6 +2166,8 @@ class TORP_List:
                     self.array = np.array(new_array)
                     del new_array
                     self.check_for_old_objects
+                    self.update_front()
+                    self.update_i(i)
                     return
             #append to the end of the array since it would have returned
             #out of the function if it was to be inserted in the middle
@@ -1990,7 +2176,69 @@ class TORP_List:
             self.array = np.array(new_array)
             del new_array
             self.check_for_old_objects()
+            self.update_i(i+1)
+        self.update_front()
+            
+    def update_front(self):
+        '''update age and prob changes over time'''
+        
+        front = self.array[0]
+        back = self.array[-1]
+        front.predictors['age'] = round(((front.last_update - front.detection_time).seconds)/60, 2)
+        
+        if (front.predictors['age'] < c.torp_prob_change_2) or (len(self.array) == 1):
+            front.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = front.predictors['prob']
+        else:
+            closeTorp = self.find_temporal_closest(c.torp_prob_change_2)
+            front.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = round(front.predictors['prob'] - closeTorp.predictors['prob'], 6)
+        
+        if front.predictors['age'] < c.torp_prob_change_1 or (len(self.array) == 1):
+            front.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = front.predictors['prob']
+        else:
+            closeTorp = self.find_temporal_closest(c.torp_prob_change_1)
+            front.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = round(front.predictors['prob'] - closeTorp.predictors['prob'], 6)
+        
+        front.update_buffers()
+        
+        self.front_time = front.last_update
+        self.front_lat = front.lats[0]
+        self.front_lon = front.lons[0]
+        
+        self.back_time = back.last_update
+        self.back_lat = back.lats[0]
+        self.back_lon = back.lons[0]
     
+    def update_i(self, i):
+        '''update a specific index of the array'''
+        torp = self.array[i]
+        torp.predictors['age'] = round(((torp.last_update - torp.detection_time).seconds)/60, 2)
+        
+        if (torp.predictors['age'] < c.torp_prob_change_2) or (len(self.array) == 1):
+            torp.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = torp.predictors['prob']
+        else:
+            closeTorp = self.find_temporal_closest(c.torp_prob_change_2, i)
+            torp.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = round(torp.predictors['prob'] - closeTorp.predictors['prob'], 6)
+        
+        if torp.predictors['age'] < c.torp_prob_change_1 or (len(self.array) == 1):
+            torp.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = torp.predictors['prob']
+        else:
+            closeTorp = self.find_temporal_closest(c.torp_prob_change_1, i)
+            torp.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = round(torp.predictors['prob'] - closeTorp.predictors['prob'], 6)
+        
+        torp.update_buffers()
+            
+    def find_temporal_closest(self, time, i = 0):
+        '''Find torp in list closest to 'time' minutes ago'''
+        
+        minTime = 100000
+        returnTorp = None
+        for torp in self.array:
+            if abs(((((self.array[i].last_update - torp.last_update).seconds)/60) - time)) < abs(minTime):
+                minTime = abs(((((self.array[i].last_update - torp.last_update).seconds)/60) - time))
+                returnTorp = torp
+        
+        return returnTorp
+        
     #add functionality to delete itself from dictionary if all objects are 3+ hours old
     def check_for_old_objects(self):
         '''Get rid of objects from 3+ hours ago unless they are ongoing'''
@@ -2005,14 +2253,23 @@ class TORP_List:
                 del_indices.append(i)
             
         self.array = np.delete(self.array, del_indices)
+    
+    def link_torp(self, tl):
+        '''used for appending torp lists across 00z'''
+        for torp in tl.array:
+            torp.long_id = self.array[0].long_id
+            torp.detection_time = self.array[0].detection_time
+            self.insert(torp)
                 
     @staticmethod
-    def gen_torp_dict_from_file(path, td = None):
+    def gen_torp_dict_from_file(path, grid, cutoff, td = None):
         '''Given a torp csv file from a radar, this function will create
         TORP objects and add them to a dictionary of TORP lists. Each list
         will be full of TORP objects with the same long id but different
         'last updated' times. This will allow for all TORP objects of the
-        same storm to be grouped together, but all storms separated'''
+        same storm to be grouped together, but all storms separated. Also,
+        TORP objects/lists are not added to the dictionary if they are not
+        on the given wofs grid'''
         
         #if no torp list was passed, create one to add new torp objects to,
         #otherwise, use passed torp list
@@ -2030,7 +2287,14 @@ class TORP_List:
         file = path.split('/')[-1]
         last_update = file.split('_')[0]
         for i in range(len(IDs)):
-            torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update)
+            #if its not a string, its a nan object and there are no TORPs in this file
+            if not isinstance(IDs[0], str):
+                continue
+            #create the TORP object
+            torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update, torp_df.iloc[i], torp_df)
+            #if it's out of bounds for the wofs grid of the day, then ignore it
+            if not torp.check_bounds(grid):
+                continue
             #if this torp object is already in the dictionary, add it to its existing torp list
             if torp.long_id in torp_dict:
                 torp_list = torp_dict[torp.long_id]
@@ -2041,19 +2305,219 @@ class TORP_List:
                 torp_list = TORP_List()
                 torp_list.insert(torp)
                 torp_dict[torp.long_id] = torp_list
+        
+        if c.is_train_mode:
+            torp_dict = TORP_List.link_torps(torp_dict, cutoff)
             
+        return torp_dict
+    
+    @staticmethod
+    def link_torps(torp_dict, cutoff):
+        '''If training, we need to link torp objects to have the same id across 00z'''
+        
+        keys = list(torp_dict.keys())
+        for t_id in keys:
+            try:
+                tl = torp_dict[t_id]
+            except:
+                #torp has already been linked
+                continue
+            front_t = tl.array[0]
+            back_t = tl.array[-1]
+            
+            if (cutoff - front_t.last_update).seconds/60 < 10:
+                #find torp_list to link to, if exists
+                to_link = front_t.find_link(torp_dict, cutoff)
+                if not (to_link == None):
+                    del_id = to_link.array[0].long_id
+                    tl.link_torp(to_link)
+                    del torp_dict[del_id]
+        
         return torp_dict
     
     #change to generating a dictionary
     @staticmethod
-    def gen_full_dict_from_file_list(paths):
+    def gen_full_dict_from_file_list(paths, grid):
+        '''Get the torp dictionary full of torp lists representing each object through time.
+        Only keep torps that are on the wofs grid. Also, this finds the "true" init time
+        after the dictionary is created. This is used in subsequent functions when mapping
+        to the wofs grid.'''
+        
+        true_init = datetime.datetime(1970, 1, 1, 0, 0, 0)
+        
+        if c.is_train_mode:
+            #set the cutoff to the last file on the date, sometimes a bit after 00z
+            #ok to use my file paths here since it's training and i know the
+            #training torp directory
+            cutoff_candidates = []
+            for path in paths:
+                #if trained with file paths in a different spot, may need to change the [7]
+                dir_date = path.split('/')[7] + '-000000'
+                date_time = utilities.parse_date(path.split('/')[-1].split('_')[0])
+                date = utilities.parse_date(dir_date)
+                if not (date.day == date_time.day):
+                    cutoff_candidates.append(date_time)
+            if len(cutoff_candidates) == 0:
+                date = utilities.parse_date(paths[0].split('/')[-1].split('_')[0])
+                if date.hour > 0:
+                    date.replace(hour=0, minute=0, second=0)
+                else:
+                    date.replace(day=date.day+1, hour=0, minute=0, second=0)
+                cutoff = date
+            else:
+                cutoff = np.max(cutoff_candidates)
+        else:
+            #doesn't really matter since we don't have to do linking,
+            #but we'll set it to 00z of the day anyway
+            date = utilities.parse_date(paths[0].split('/')[-1].split('_')[0])
+            if date.hour > 0:
+                date.replace(hour=0, minute=0, second=0)
+            else:
+                date.replace(day=date.day+1, hour=0, minute=0, second=0)
+            cutoff = date
+        
         for i, path in enumerate(paths):
             if i == 0:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, cutoff)
             else:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path, torp_dict)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, cutoff, torp_dict)
+            
+            file = path.split('/')[-1]
+            last_update = file.split('_')[0]
+            init = utilities.get_init_time(last_update)
+            
+            if init > true_init:
+                true_init = init
         
-        return torp_dict
+        return torp_dict, true_init
+    
+    @staticmethod
+    def gen_wofs_points_gdf(torp_dict, true_init, lead_time_int, wofs_gdf):
+        '''This method will return a gdf with wofs_i and wofs_j values along with
+        the associated torp_id. This will allow for easily applying TORP object
+        predictors to each point on the wofs map.
+        
+        After extrapolation is implemented, this will need to be updated to specify
+        the lead time at which the resulting wofs points and torp_ids are valid.'''
+        
+        i = 0
+        for long_id in torp_dict:
+            l = td[long_id]
+            t = l.array[0]
+            if not (t.init_start == true_init):
+                continue
+            if i == 0:
+                gdf = t.get_wofs_overlap_points(wofs_gdf, torp_dict, lead_time_int)
+                i += 1
+            else:
+                gdf = t.get_wofs_overlap_points(wofs_gdf, torp_dict, lead_time_int, gdf)
+        
+        return gdf
+    
+    @staticmethod
+    def overlap_gdf_to_npy(gdf, torp_dict, txt_file):
+        '''This function takes the gdf of overlap points and corresponding torp objects and makes the final npy
+        of torp predictors. It also applies the convolutions to get the max values on the grid within x km.
+        These radii to search in the convolutions as well as the method of convolution (max, min, absolute value)
+        can be set in the config file.'''
+        
+        wofs_i = gdf.wofs_i.values
+        wofs_j = gdf.wofs_j.values
+        
+        km_spacing = c.wofs_km_spacing
+        radii_km = c.torp_conv_dists
+        n_sizes = []
+        for i in range(len(radii_km)):
+            r = radii_km[i]
+            n_sizes.append(int(((r/km_spacing)*2)+3))
+
+        conv_footprints = utilities.get_footprints(n_sizes, radii_km, km_spacing)
+        
+        for t_id in torp_dict:
+            t = torp_dict[t_id]
+            predictors = t.array[0].predictors
+            break
+        
+        npy_predictors_dict = {}
+        for predictor in predictors:
+            npy_predictors_dict[predictor] = np.zeros((300, 300))
+        
+        for m in range(len(wofs_i)):
+            i = wofs_i[m]
+            j = wofs_j[m]
+            torp_predictors = torp_dict[gdf.torp_id.values[m]].array[0].predictors
+            for predictor in npy_predictors_dict:
+                array = npy_predictors_dict[predictor]
+                array[i, j] = torp_predictors[predictor]
+                npy_predictors_dict[predictor] = array
+        
+        if not os.path.isfile(txt_file):  
+            f = open(txt_file, "w")
+        
+        i = 0
+        for predictor in npy_predictors_dict:
+            array_2d = npy_predictors_dict[predictor]
+            if predictor in c.torp_max_convs:
+                var_method = "max"
+            elif predictor in c.torp_min_convs:
+                var_method = "min"
+            elif predictor in c.torp_abs_convs:
+                var_method = "abs"
+            else:
+                var_method = "none"
+            
+            if not (var_method == "none"):
+                array_2d_15km = utilities.add_convolutions(var_method, array_2d, conv_footprints[0])
+                array_1d_15km = array_2d_15km.reshape((90000,1))
+                array_2d_30km = utilities.add_convolutions(var_method, array_2d, conv_footprints[1])
+                array_1d_30km = array_2d_30km.reshape((90000,1))
+                array_2d_45km = utilities.add_convolutions(var_method, array_2d, conv_footprints[2])
+                array_1d_45km = array_2d_45km.reshape((90000,1))
+                array_2d_60km = utilities.add_convolutions(var_method, array_2d, conv_footprints[3])
+                array_1d_60km = array_2d_60km.reshape((90000,1))
+            
+            array_1d = array_2d.reshape((90000,1))
+            if i == 0:
+                full_npy = array_1d
+                if not (var_method == "none"):
+                    full_npy = np.append(full_npy, array_1d_15km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_30km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_45km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_60km, axis = 1)
+                i += 1
+            else:
+                full_npy = np.append(full_npy, array_1d, axis = 1)
+                if not (var_method == "none"):
+                    full_npy = np.append(full_npy, array_1d_15km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_30km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_45km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_60km, axis = 1)
+            
+            if not os.path.isfile(txt_file):
+                f.write(predictor + '\n')
+                f.write(predictor + '_' + var_method + '_15km' + '\n')
+                f.write(predictor + '_' + var_method + '_30km' + '\n')
+                f.write(predictor + '_' + var_method + '_45km' + '\n')
+                f.write(predictor + '_' + var_method + '_60km' + '\n')
+        if not os.path.isfile(txt_file):    
+            f.close()
+        return full_npy
+    
+    @staticmethod
+    def gen_torp_npys_all_lead_times(torp_files, wofs_grid):
+        wofs_gdf = PS.get_wofs_gdf(wofs_grid)
+        td, true_init = TORP_List.gen_full_dict_from_file_list(torp_files, wofs_grid)
+        if true_init.minute == 30:
+            for i in range(1,5):
+                gdf = TORP_List.gen_wofs_points_gdf(td, true_init, i, wofs_gdf)
+                npy = TORP_List.overlap_gdf_to_npy(gdf, td, c.torp_vars_filename)
+                torp_npys.append(npy)
+        else:
+            for i in range(1,7):
+                gdf = TORP_List.gen_wofs_points_gdf(td, true_init, i, wofs_gdf)
+                npy = TORP_List.overlap_gdf_to_npy(gdf, td, c.torp_vars_filename)
+                torp_npys.append(npy)
+        return torp_npys
 
 def main():
     '''Main Method'''
