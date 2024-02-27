@@ -38,20 +38,23 @@ min_radius = 1.5 #in km (for probSevere objects)
 #max_radius = 20.0 #in km (for probSevere objects) #Used to be 30.0, but that was much too big
 max_radius = 1.5 
 
-conv_type = "square" #"square" or "circle" -- tells how to do the convolutions 
+#conv_type = "square" #"square" or "circle" -- tells how to do the convolutions 
+conv_type = "circle"
 predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially in km for predictors
+
+
 obs_radii = ["30.0", "15.0", "7.5", "39.0"]
 final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
-wofs_fields_file = "standard_wofs_variables_v9.txt"
-wofs_methods_file = "standard_wofs_methods_v9.txt"
+wofs_fields_file = "standard_wofs_variables.txt"
+wofs_methods_file = "standard_wofs_methods.txt"
 
-all_fields_file = "all_fields_v9.txt" #Holds all the predictor fields
-all_methods_file = "all_methods_v9.txt" #Holds all the preprocessing methods
+all_fields_file = "all_fields.txt" #Holds all the predictor fields
+all_methods_file = "all_methods.txt" #Holds all the preprocessing methods
 
 #Holds all the variables that just get taken from the point of prediction
-single_pt_file = "single_point_fields_v9.txt" 
+single_pt_file = "single_point_fields.txt" 
 
 
 bottom_hour_inits = ["1730", "1830", "1930", "2030", "2130", "2230", "2330", "0030", "0130",\
