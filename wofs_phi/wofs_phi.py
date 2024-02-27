@@ -119,7 +119,13 @@ class MLGenerator:
         #Add wofs x points
         combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "wofs_x") 
 
-        #Add convolutions -- TODO
+        #Add wofs initialization time 
+        combined_xr = pex.add_single_field(combined_xr, Wofs.INIT_TIME_DICT[forecast_specs.wofs_init_time]\
+                                , "wofs_init_time", fcst_grid.ny, fcst_grid.nx) 
+
+        print (combined_xr)
+
+        #Add convolutions
         #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
         #Probably can compute stuff using the predictor_radii_km in config file 
         #rf_sizes, grid spacing of wofs
@@ -127,17 +133,15 @@ class MLGenerator:
                                 forecast_specs.allMethods, forecast_specs.singlePtFields, \
                                 c.predictor_radii_km, c.dx_km)
 
-
-
         #Get 1d predictor names 
         predictor_list = pex.get_predictor_list(forecast_specs.allFields, \
                                 forecast_specs.singlePtFields, c.predictor_radii_km, \
                                 c.extra_predictor_names)
 
-        print (predictor_list) 
-
-        #Convert to 1d predictor list 
-
+       
+        #Extract 1d predictors  
+        one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
+                            forecast_specs, fcst_grid)
 
         #Save predictors to file (if we're training) 
 
@@ -159,6 +163,14 @@ class Wofs:
 
     #Will compute number of members exceeding this threshold 
     DBZ_THRESH = 40 
+
+    #Dictionary converting wofs initialization time strings to integers in order 
+    #(to be used for converting wofs initialization times to 1-d predictors
+    INIT_TIME_DICT = {'1700':1, '1730':2, '1800':3, '1830':4, '1900':5, '1930':6,\
+                        '2000':7, '2030':8, '2100':9, '2130':10, '2200':11, '2230':12,\
+                        '2300':13, '2330':14, '0000':15, '0030':16, '0100':17, '0130':18,\
+                        '0200':19, '0230':20, '0300':21, '0330':22, '0400':23, '0430':24,\
+                        '0500':25, '0530':26, '0600':27} 
 
     #Legacy file naming conventions 
     ENS_VARS = ["ws_80", "dbz_1km", "wz_0to2_instant", "uh_0to2_instant",  "uh_2to5", "w_up",\
@@ -184,7 +196,7 @@ class Wofs:
         #self.gdf = gdf
         self.xarr = xarr
 
-        pass
+        return 
 
 
     @classmethod
@@ -195,8 +207,6 @@ class Wofs:
             @wofs_path is the path to the wofs files 
             @wofs_files is a list of wofs files that are considered
         '''
-
-            #TODO: We may need to have WoFS_ALL, WoFS_ENV,  etc. Unclear how to handle.  
 
         #Get the wofs fields and methods from text files (set in the config.py file)
         wofs_fields = np.genfromtxt(c.wofs_fields_file, dtype='str') 
@@ -334,7 +344,7 @@ class WoFS_Agg:
             #Set the object's grid time list 
             wofs_agg_obj.set_grid_time_list() 
 
-            #Set the object's temporal aggregation -- TODO
+            #Set the object's temporal aggregation
             wofs_agg_obj.set_temporal_aggregation()
 
             #Add wofs_agg_obj to list 
@@ -601,13 +611,6 @@ class WoFS_Agg:
         return wofs_var, mem_index, threshold_val
 
 
-    #TODO: 
-    @staticmethod
-    def read_grids():
-
-        return 
-
-
 
 class Grid: 
     '''Handles the (wofs) grid attributes.'''
@@ -815,7 +818,7 @@ class PS_WoFS:
         #Apply the probability threshold 
         hazard_gdf = PS_WoFS.threshold_probability(hazard_gdf, c.ps_thresh)
     
-        #TODO: Do the assignments/updates -- do point by point
+        #Do the assignments/updates -- do point by point
         for l in range(len(points_to_change)): 
             y = points_to_change['wofs_j'].iloc[l]
             x = points_to_change['wofs_i'].iloc[l]
@@ -1244,7 +1247,7 @@ class PS:
                 real_ys = np.arange(y-ymax, y+ymax+1)
                 real_xs = np.arange(x-xmax, x+xmax+1)
 
-                #TODO: Check if points are within radius. 
+                #Check if points are within radius. 
                 patch_xs = []
                 patch_ys = []
                 patch_inds = []

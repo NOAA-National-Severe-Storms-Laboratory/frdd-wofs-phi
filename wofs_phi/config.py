@@ -46,7 +46,6 @@ predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially 
 #Fields not part of the standard wofs or ProbSevere fields that we'd like to include as extras 
 extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 
-
 obs_radii = ["30.0", "15.0", "7.5", "39.0"]
 final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 

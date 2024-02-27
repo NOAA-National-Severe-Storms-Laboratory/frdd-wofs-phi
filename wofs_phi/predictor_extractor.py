@@ -54,6 +54,27 @@ def add_gridded_field(in_xr, gridded_field, name):
     return in_xr
 
 
+def add_single_field(in_xr, single_field, name, nY, nX):
+
+    ''' Adds single (i.e., non-gridded) field to xarray of predictors 
+        (e.g., wofs initialization time). The idea is we'll convert
+        the single field to a gridded field where the entire grid has
+        the same number.
+        @in_xr is the xarray to add the predictor to
+        @single_field is the 1-d number to add
+        @name is the name that this new field will have in the xarray
+        @nY is the number of y points 
+        @nX is the number of x points 
+    '''
+    
+    to_add = np.ones((nY, nX))*single_field
+    
+    #Now, add this 2-d field 
+    in_xr = add_gridded_field(in_xr, to_add, name)
+    
+        
+    return in_xr
+
 def get_footprints(predRadiiKm, gridSpacingKm):
 
     '''Gets/returns list of binary grid of "footprints" defining the circular 
@@ -248,6 +269,33 @@ def get_predictor_list(allFields, singlePtFields, pred_radii_km, \
     return new_names
 
 
+def extract_1d(all_pred_xr, predictorList, fSpecs, fGrid):
+    '''Returns an array of 1-d predictors
+        @all_pred_xr is the xarray Dataset containing all of the predictor 
+            variables and their convolutions, shape (nY, nX)
+        @predictorList is a list of all predictor fields (with convolutions named)
+        @fSpecs is a ForecastSpecs object for the current situation 
+        @fGrid is a Grid object for the current wofs grid 
+            will have to be added separately 
+    '''
 
+    #First, establish nY, nX, nV for convenience
+    nY = fGrid.ny #num y points
+    nX = fGrid.nx #num x points
+    nV = len(predictorList) #num predictors
+    nSamples = int(nY*nX) #total number of grid points
+    
+    #Create new 3d array to hold the predictors 
+    predictor_array = np.zeros((nY, nX, nV))
+    
+    #Make the assignments to the 3d array for each variable
+    for v in range(nV):
+        curr_var = predictorList[v] 
+        predictor_array[:,:,v] = all_pred_xr[curr_var].to_numpy() 
+
+    #Now flatten, since we want 1-d predictors (for each variable) 
+    predictor_array = predictor_array.reshape(nSamples, -1) 
+
+    return predictor_array 
 
 
