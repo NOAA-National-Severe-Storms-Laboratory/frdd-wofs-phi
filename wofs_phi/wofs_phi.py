@@ -133,7 +133,7 @@ class MLGenerator:
         print (conv_predictors_ds)
         
         torp_predictors = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs)
-        return torp_predictors
+        
         quit() 
 
         #Convert to 1d predictor list 
@@ -2378,181 +2378,6 @@ class TORP_List:
             
             return torp_dict
         
-        #if not training mode, then don't need to deal with calculating cutoff point
-        for i, path in enumerate(paths):
-            if i == 0:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs)
-            else:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, torp_dict)
-        
-        return torp_dict
-    
-    @staticmethod
-    def gen_wofs_points_gdf(torp_dict, fcst_specs, wofs_gdf):
-        '''This method will return a gdf with wofs_i and wofs_j values along with
-        the associated torp_id. This will allow for easily applying TORP object
-        predictors to each point on the wofs map.
-        
-        After extrapolation is implemented, this will need to be updated to specify
-        the lead time at which the resulting wofs points and torp_ids are valid.'''
-        
-        delta_t_min = (fcst_specs.start_valid_dt - fcst_specs.wofs_init_time_dt).seconds/60
-        lead_index = ((delta_t_min - c.wofs_spinup_time)/fcst_specs.forecast_window) + 1
-        
-        i = 0
-        gdf = None
-        for long_id in torp_dict:
-            l = torp_dict[long_id]
-            t = l.array[0]
-            if not (t.start_valid == fcst_specs.wofs_init_time_dt + dt.timedelta(seconds = c.wofs_spinup_time*60)):
-                continue
-            if i == 0:
-                gdf = t.get_wofs_overlap_points(wofs_gdf, torp_dict)
-                i += 1
-            else:
-                gdf = t.get_wofs_overlap_points(wofs_gdf, torp_dict, gdf)
-        
-        return gdf
-    
-    @staticmethod
-    def overlap_gdf_to_npy(gdf, torp_dict, txt_file):
-        '''This function takes the gdf of overlap points and corresponding torp objects and makes the final npy
-        of torp predictors. It also applies the convolutions to get the max values on the grid within x km.
-        These radii to search in the convolutions as well as the method of convolution (max, min, absolute value)
-        can be set in the config file.'''
-        
-        km_spacing = c.dx_km
-        radii_km = c.torp_conv_dists
-        n_sizes = []
-        for i in range(len(radii_km)):
-            r = radii_km[i]
-            n_sizes.append(int(((r/km_spacing)*2)+3))
-
-        conv_footprints = utilities.get_footprints(n_sizes, radii_km, km_spacing)
-        
-        predictors = c.torp_all_predictors
-        
-        npy_predictors_dict = {}
-        for predictor in predictors:
-            npy_predictors_dict[predictor] = np.zeros((300, 300))
-            if predictor in ['age', 'RangeInterval']:
-                npy_predictors_dict[predictor] -= 1
-        
-        if  isinstance(gdf, pd.DataFrame):
-            wofs_i = gdf.wofs_i.values
-            wofs_j = gdf.wofs_j.values
-        else:
-            wofs_i = []
-            wofs_j = []
-        
-        for m in range(len(wofs_i)):
-            i = wofs_i[m]
-            j = wofs_j[m]
-            torp_predictors = torp_dict[gdf.torp_id.values[m]].array[0].predictors
-            for predictor in npy_predictors_dict:
-                array = npy_predictors_dict[predictor]
-                array[i, j] = torp_predictors[predictor]
-                npy_predictors_dict[predictor] = array
-        
-        if not os.path.isfile(txt_file):  
-            f = open(txt_file, "w")
-        
-        for i, predictor in enumerate(predictors):
-            array_2d = npy_predictors_dict[predictor]
-            if predictor in c.torp_max_convs:
-                var_method = "max"
-            elif predictor in c.torp_min_convs:
-                var_method = "min"
-            elif predictor in c.torp_abs_convs:
-                var_method = "abs"
-            else:
-                var_method = "none"
-            
-            if not (var_method == "none"):
-                array_2d_15km = utilities.add_convolutions(var_method, array_2d, conv_footprints[0])
-                array_1d_15km = array_2d_15km.reshape((90000,1))
-                array_2d_30km = utilities.add_convolutions(var_method, array_2d, conv_footprints[1])
-                array_1d_30km = array_2d_30km.reshape((90000,1))
-                array_2d_45km = utilities.add_convolutions(var_method, array_2d, conv_footprints[2])
-                array_1d_45km = array_2d_45km.reshape((90000,1))
-                array_2d_60km = utilities.add_convolutions(var_method, array_2d, conv_footprints[3])
-                array_1d_60km = array_2d_60km.reshape((90000,1))
-            
-            array_1d = array_2d.reshape((90000,1))
-            if i == 0:
-                full_npy = array_1d
-                if not (var_method == "none"):
-                    full_npy = np.append(full_npy, array_1d_15km, axis = 1)
-                    full_npy = np.append(full_npy, array_1d_30km, axis = 1)
-                    full_npy = np.append(full_npy, array_1d_45km, axis = 1)
-                    full_npy = np.append(full_npy, array_1d_60km, axis = 1)
-                i += 1
-            else:
-                full_npy = np.append(full_npy, array_1d, axis = 1)
-                if not (var_method == "none"):
-                    full_npy = np.append(full_npy, array_1d_15km, axis = 1)
-                    full_npy = np.append(full_npy, array_1d_30km, axis = 1)
-                    full_npy = np.append(full_npy, array_1d_45km, axis = 1)
-                    full_npy = np.append(full_npy, array_1d_60km, axis = 1)
-            
-            if not os.path.isfile(txt_file):
-                f.write(predictor + '\n')
-                f.write(predictor + '_' + var_method + '_15km' + '\n')
-                f.write(predictor + '_' + var_method + '_30km' + '\n')
-                f.write(predictor + '_' + var_method + '_45km' + '\n')
-                f.write(predictor + '_' + var_method + '_60km' + '\n')
-        if not os.path.isfile(txt_file):    
-            f.close()
-        return full_npy
-    
-    @staticmethod
-    def gen_torp_npy(torp_files, wofs_grid, fcst_specs):
-        
-        wofs_gdf = PS.get_wofs_gdf(wofs_grid)
-        td = TORP_List.gen_full_dict_from_file_list(torp_files, wofs_grid, fcst_specs)
-        gdf = TORP_List.gen_wofs_points_gdf(td, fcst_specs, wofs_gdf)
-        npy = TORP_List.overlap_gdf_to_npy(gdf, td, c.torp_vars_filename)
-        
-        return npy
-    
-    #change to generating a dictionary
-    @staticmethod
-    def gen_full_dict_from_file_list(paths, grid, fcst_specs):
-        '''Get the torp dictionary full of torp lists representing each object through time.
-        Only keep torps that are on the wofs grid. Also, this finds the "true" init time
-        after the dictionary is created. This is used in subsequent functions when mapping
-        to the wofs grid.'''
-        
-        if c.is_train_mode:
-            #set the cutoff to the last file on the date, sometimes a bit after 00z
-            #ok to use my file paths here since it's training and i know the
-            #training torp directory
-            cutoff_candidates = []
-            for path in paths:
-                #if trained with file paths in a different spot, may need to change the [7]
-                dir_date = path.split('/')[7] + '-000000'
-                date_time = utilities.parse_date(path.split('/')[-1].split('_')[0])
-                date = utilities.parse_date(dir_date)
-                if not (date.day == date_time.day):
-                    cutoff_candidates.append(date_time)
-            if len(cutoff_candidates) == 0:
-                date = utilities.parse_date(paths[0].split('/')[-1].split('_')[0])
-                if date.hour > 0:
-                    date.replace(hour=0, minute=0, second=0)
-                else:
-                    date.replace(day=date.day+1, hour=0, minute=0, second=0)
-                cutoff = date
-            else:
-                cutoff = np.max(cutoff_candidates)
-            
-            for i, path in enumerate(paths):
-                if i == 0:
-                    torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, cutoff=cutoff)
-                else:
-                    torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, cutoff=cutoff, torp_dict=torp_dict)
-            
-            return torp_dict
-        
         torp_dict = {}
         
         #if not training mode, then don't need to deal with calculating cutoff point
@@ -2579,7 +2404,7 @@ class TORP_List:
         i = 0
         gdf = None
         for long_id in torp_dict:
-            l = td[long_id]
+            l = torp_dict[long_id]
             t = l.array[0]
             if not (t.start_valid == fcst_specs.wofs_init_time_dt + dt.timedelta(seconds = c.wofs_spinup_time*60)):
                 continue
