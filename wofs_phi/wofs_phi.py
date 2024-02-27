@@ -2553,6 +2553,8 @@ class TORP_List:
             
             return torp_dict
         
+        torp_dict = {}
+        
         #if not training mode, then don't need to deal with calculating cutoff point
         for i, path in enumerate(paths):
             if i == 0:
