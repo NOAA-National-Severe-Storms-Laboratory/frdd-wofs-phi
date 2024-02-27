@@ -14,9 +14,11 @@
 #======================
 # Imports
 #======================
-from shapely.geometry import Point, MultiPolygon, Polygon
+from shapely.geometry import Point, MultiPolygon, Polygon, LineString
 from shapely.prepared import prep
 from shapely import geometry
+from pyproj import Transformer
+from shapely.ops import transform
 import numpy as np
 #from mpl_toolkits.basemap import Basemap
 import matplotlib
@@ -49,9 +51,6 @@ import config as c
 import datetime
 import copy
 import utilities
-
-
-
 
 class MLGenerator: 
     ''' This class will handle the ML generator functions. '''
@@ -86,17 +85,15 @@ class MLGenerator:
         '''Instance method to generate the predictions given an MLGenerator object.
             Kind of like the "main method" for generating the predictions. ''' 
 
-        #TODO: Should build roadmap 
-       
         # Get grid stats from first wofs file 
         fcst_grid = Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
 
         #Get the forecast specifications (e.g., start valid, end_valid, ps_lead time, wofs_lead_time, etc.) 
         #These will be determined principally by the wofs files we're dealing with
-        forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files[0], self.wofs_files)
+        forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files)
 
         #Do PS preprocessing -- parallel track 1 -- should return a PS xarray 
-        ps = PS.preprocess_ps(fcst_grid, forecast_specs) 
+        #ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
 
         
         #Do WoFS preprocessing -- parallel track 2 
@@ -122,15 +119,7 @@ class MLGenerator:
         #Save predictions to ncdf 
 
 
-        pass
-
-
-    @staticmethod
-    def get_full_path(pathToFiles, filenames):
-        '''Returns a list of the full path to a list of files given a path and a list of filenames.'''
-        full_list = ["%s/%s" %(pathToFiles, f) for f in filenames]
-    
-        return full_list  
+        pass  
 
 
 class Wofs:
@@ -208,10 +197,27 @@ class Grid:
 class PS:
     '''Handles the ProbSevere forecasts/processing'''
 
+
+    #Class constants 
+
+    #Variables we will take from older probSevere files that will help us
+    #construct current predictors 
+    HISTORICAL_VARIABLES = ["id", "hail_prob", "torn_prob", "wind_prob", "age"]
+
+    #List of variables to extract from current probsevere files 
+    CURR_PS_VARIABLES = ["id", "hail_prob", "torn_prob", "wind_prob", "east_motion", "south_motion", "points"]
+
+    #Buffer to add around wofs points in m. 2.15km guarantees that we cover the full grid cell
+    WOFS_BUFFER = 2.15*10**3 
+
     def __init__(self, gdf, xarr):
         ''' @gdf is a geodataframe containing all the relevant predictors
             @xarr is an xarray of all the relevant predictors
         '''
+
+        #TODO: Could add a list of past ProbSevereObject objects, and a list of 
+        #current ProbSevereObject objects. 
+
 
         self.gdf = gdf
         self.xarr = xarr
@@ -220,31 +226,534 @@ class PS:
         return 
 
     @classmethod
-    def preprocess_ps(cls, grid, specs):
+    def preprocess_ps(cls, grid, specs, ps_path, ps_files):
         ''' Like the "main method"/blueprint method for doing the probSevere preprocessing.
             @grid is the forecast Grid object for the current case
             @specs is the ForecastSpecs object for the current case. 
+            @ps_path is the string path to the ProbSevere files
+            @ps_files is the list of ProbSevere files, beginning with the most recent and 
+                working backward in time. 
             Ultimately creates a PS object with a gdf and xarrray of the relevant predictors 
         '''
 
-        #Current procedure: #TODO
+        #TODO (potential): Could create new class: ProbSevereObject, where each literal ProbSevere
+        #object is an object, and we set all the variables we want to extract. Then we'd have 1 method
+        #to convert this to a dataframe/geodataframe. Might be worth doing. So in the end we'd get
+        #a list of past ProbSevereObject objects and a list of current ProbSevereObject objects. 
+
         #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
+        past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files)
 
-        #Get PS geodataframe 
+        #Get PS geodataframe (i.e., for current PS object) 
+        ps_gdf = PS.get_ps_gdf(ps_path, ps_files[0])
 
-        #Get Wofs geodataframe -- and, ultimately, buffered WoFS geodataframe --> for merging purposes
+        #Get Wofs geodataframe
+        wofs_gdf = PS.get_wofs_gdf(grid) 
 
-        #Get merged PS/WoFS geodataframe, which is how we "map" PS points to wofs grid 
+        #Add buffer to wofs geodataframe (since wofs grid points are larger than a literal "point") 
+        buffered_wofs_gdf = PS.add_gpd_buffer(wofs_gdf, cls.WOFS_BUFFER)
+
+        #Merge the wofs and probSevere geodataframes -- this is how we will eventually "map" 
+        #PS points to wofs grid
+        merged_gdf = buffered_wofs_gdf.sjoin(ps_gdf, how='inner', predicate='intersects')
 
         #Do the extrapolation 
+        extrapolated_gdf = PS.do_extrapolation(past_ps_df, merged_gdf, specs)
 
-        #Put the key predictor fields in geodataframe 
+        #Map to wofs grid 
 
         #Convert to xarray 
 
         #Create new PS object -- will hold geodataframe of predictors and xarray 
 
-        pass
+
+    @staticmethod
+    def do_extrapolation(prev_ps_df, curr_gdf, fcst_specs):
+        ''' This method creates/returns a "final" geopandas dataframe with all relevant PS 
+            attriutes/predictors over the relevant time period for all PS objects in wofs
+            domain
+            @prev_ps_df is the dataframe of past PS objects
+            @curr_gdf is the merged "WoFS/PS geopandas dataframe. 
+            @fcst_specs is a ForecastSpecs object for the current situation.
+        '''
+
+        #If there are no objects, then there's nothing to apply the extrapolation to
+        if (len(curr_gdf) == 0):
+            output_gdf = curr_gdf.copy(deep=True)
+
+
+        else: 
+
+            #Get unique object IDs from current PS file/gdf
+            obj_ids = curr_gdf['id'].unique() 
+       
+            subsets = [] #Will hold the gdfs from individual objects  
+
+            #Loop over unique object IDs -- parallelize eventually?? 
+            for obj_id in obj_ids: 
+
+                #Find the gdf entries corresponding to the relevant object
+                obj_gdf = curr_gdf.loc[curr_gdf['id']==obj_id]
+
+                past_obj_df = prev_ps_df.loc[prev_ps_df['id']==obj_id]
+
+                #Get object attributes -- hazard probs and storm motion components
+
+                obj_hail_prob = PS.get_object_attribute(obj_gdf, "hail_prob")
+                obj_torn_prob = PS.get_object_attribute(obj_gdf, "torn_prob")
+                obj_wind_prob = PS.get_object_attribute(obj_gdf, "wind_prob")
+                obj_motion_east = PS.get_object_attribute(obj_gdf, "east_motion") 
+                obj_motion_south = PS.get_object_attribute(obj_gdf, "south_motion") 
+
+                #Find Storm Age
+                obj_age = PS.find_obj_age(obj_id, prev_ps_df) 
+                
+                #Find 14- and 30-minute changes 
+                fourteen_min_change_hail, fourteen_min_change_torn, fourteen_min_change_wind = \
+                        PS.find_prob_change(obj_id, prev_ps_df, 14)
+
+                thirty_min_change_hail, thirty_min_change_torn, thirty_min_change_wind = \
+                        PS.find_prob_change(obj_id, prev_ps_df, 30) 
+
+                #Get extrapolation points (no adjustable radius) 
+
+                #NOTE: fcst_specs.ps_lead_time_end is essentially the time to which we need to extrapolate. 
+                orig_extrap_points = PS.get_extrapolation_points(fcst_specs.ps_lead_time_end,\
+                    obj_motion_east, obj_motion_south, c.dx_km, \
+                    fcst_specs.adjustable_radii_gridpoint)
+
+
+                #Now, add the adjustable radii to the set of extrapolation points 
+                extrap_points = PS.add_adjustable_radii(orig_extrap_points, fcst_specs, c.dx_km)
+
+                subset_gdf = PS.apply_extrapolation(obj_gdf, extrap_points)
+
+                #Add the probabilities, age, 14-, and 30-minute prob changes  
+                attribute_names = ["hail_prob", "torn_prob", "wind_prob", "age",\
+                                    "fourteen_change_hail", "fourteen_change_torn", \
+                                    "fourteen_change_wind", "thirty_change_hail", \
+                                    "thirty_change_torn", "thirty_change_wind"]
+
+                dataToAdd = [obj_hail_prob, obj_torn_prob, obj_wind_prob, obj_age, \
+                            fourteen_min_change_hail, fourteen_min_change_torn, \
+                            fourteen_min_change_wind, thirty_min_change_hail, \
+                            thirty_min_change_torn, thirty_min_change_wind] 
+
+                subset_gdf = PS.add_ps_attributes(subset_gdf, attribute_names, dataToAdd) 
+
+                #Add to subsets list 
+                subsets.append(subset_gdf) 
+
+            #Concatenate all subsets
+            output_gdf = pd.concat(subsets, axis=0, ignore_index=True) 
+
+
+
+    
+        return output_gdf 
+
+        
+    @staticmethod 
+    def add_ps_attributes(in_gdf, var_names, data_to_add):
+        ''' Adds new columns of data to an existing geopandas dataframe.
+            @in_gdf the existing geopandas dataframe
+            @var_names is a list of (string) names of the new variables 
+            @data_to_add is a list of the corresponding data to be added. 
+        '''
+
+        for d in range(len(var_names)):
+            var_name = var_names[d] 
+            curr_data = data_to_add[d] 
+            
+            in_gdf[var_name] = curr_data
+
+        return in_gdf
+
+
+    @staticmethod
+    def apply_extrapolation(in_gdf, in_extrap_points):
+        '''Applies the (spatially expanded) extrapolated points to the original geodataframe.
+            @in_gdf is an incoming geopandas dataframe of PS/wofs points (here, will generally
+            be of a single object)
+            @in_extrap_points is a pandas dataframe of relative extrapolation points to be 
+            added/applied to the current set of points 
+        '''
+
+        parts = [] #Will hold dataframes to concat
+
+        for a in range(len(in_gdf)):
+            #print (in_gdf)
+            part = in_extrap_points.copy()
+            part['wofs_j'] = in_extrap_points['y'] + in_gdf['wofs_j'].iloc[a]
+            part['wofs_i'] = in_extrap_points['x'] + in_gdf['wofs_i'].iloc[a]
+            part['t'] = in_extrap_points['t']
+
+            parts.append(part)
+
+
+        #Now concatenate
+        out_df = pd.concat(parts, axis=0, ignore_index=True)
+
+        #Return only the columns that matter: 't', 'wofs_j', 'wofs_i'
+
+        return out_df[['wofs_j', 'wofs_i', 't']]
+
+
+    @staticmethod 
+    def add_adjustable_radii(all_pts_df, curr_specs, km_spacing):
+        ''' Adds the adjustable radius to the dataframe. i.e., 
+            Add in points within a radius -- for each element in all_pts_df 
+            Returns an updated version of all_pts_df with these points added.
+            @all_pts_df is the dataframe of extrapolation points.
+            @curr_specs is the current ForecastSpecs object
+        '''
+
+
+        #Only proceed if there are adjustable radii to add, otherwise skip this
+        #and just return what was passed in 
+        if (max(curr_specs.adjustable_radii_gridpoint) > 0):
+
+            all_column_names = ['y','x', 't', 'max_xy', 'radius_km']
+
+            patch_coords = []
+
+            for a in range(len(all_pts_df)):
+                y = all_pts_df['y'][a]
+                x = all_pts_df['x'][a]
+                ymax = all_pts_df['max_xy'][a]
+                xmax = ymax
+                time = all_pts_df['t'][a]
+                rradius = all_pts_df['radius_km'][a]
+
+
+                #Need to add all relative points within circle 
+
+                #Obtain square patch 
+                real_ys = np.arange(y-ymax, y+ymax+1)
+                real_xs = np.arange(x-xmax, x+xmax+1)
+
+                #TODO: Check if points are within radius. 
+                patch_xs = []
+                patch_ys = []
+                patch_inds = []
+                for xx in real_xs:
+                    for yy in real_ys:
+                        x_rad = abs(x-xx)
+                        y_rad = abs(y-yy)
+                        if ( (math.sqrt(x_rad**2 + y_rad**2)*km_spacing <= rradius) and ((yy,xx) not in patch_coords)):
+                            patch_coords.append((yy,xx))
+                            #We need y,x,t,max_xy,radius_km
+                            patch_inds.append((yy,xx, time, ymax, rradius))
+                            new_point = pd.DataFrame(patch_inds, columns=all_column_names)
+                            #Append new point to original dataframe 
+                            all_pts_df = pd.concat([all_pts_df, new_point], \
+                                            names=all_column_names, ignore_index=True, copy=False) 
+        
+        return all_pts_df 
+
+
+    @staticmethod 
+    def get_extrapolation_points(time, e_motion, s_motion, km_spacing, max_xy):
+        '''
+        Finds the (relative) wofs points that would be hit by extrapolating a storm object
+        over time according to the supplied storm motion vectors. 
+    
+        Returns a set of (unique) relative coordinates that are "hit" by the extrapolation. 
+            E.g., (0,0) is the initial point
+
+        @time is the time in minutes over which to apply the extrapolation
+        @e_motion is the eastward storm motion in km/min
+        @s_motion is the southward storm motion in km/min
+        @km_spacing is the grid spacing of the output (e.g., wofs) grid in km
+        @max_xy is a list of max_x/max_y points associated with each time. --i.e., 
+            the adjustable radii points 
+
+        '''
+
+        minutes = np.arange(time+1) 
+
+        new_xs = [round((e_motion*m)/(km_spacing)) for m in minutes]
+        new_ys = [round((-s_motion*m)/(km_spacing)) for m in minutes]
+
+
+        #Put these together and add time dimension
+        three_d_extrap_pts = [(new_ys[p], new_xs[p], p, max_xy[p]) for p in range(len(new_xs))]
+
+        #Let's make this a pandas dataframe and then extract the unique points from that
+        all_pts_df = pd.DataFrame(three_d_extrap_pts, columns=['y','x', 't', 'max_xy'])
+
+        #NOTE: Don't drop the duplicates here. 
+        all_pts_df['radius_km'] = all_pts_df['max_xy']*km_spacing
+    
+        return all_pts_df
+
+
+    @staticmethod 
+    def find_prob_change(object_id, past_ps_df, time):
+        '''Finds/returns the change in probabilities over a given time range.
+            @object_id is the object id number, 
+            @past_ps_df is the dataframe of previous PS objects,
+            @time is the time in minutes over which to compute the change  '''
+
+
+        final = past_ps_df.loc[(past_ps_df['id'] == object_id) & (past_ps_df['age'] == 0)]
+        initial = past_ps_df.loc[(past_ps_df['id'] == object_id) & (past_ps_df['age'] == time)]
+
+        if (len(final) > 0):
+            final_hail_prob = final['hail_prob'].iloc[0]
+            final_torn_prob = final['torn_prob'].iloc[0]
+            final_wind_prob = final['wind_prob'].iloc[0]
+
+            if (len(initial) > 0):
+                initial_hail_prob = initial['hail_prob'].iloc[0]
+                initial_torn_prob = initial['torn_prob'].iloc[0]
+                initial_wind_prob = initial['wind_prob'].iloc[0]
+
+                change_hail = final_hail_prob - initial_hail_prob
+                change_torn = final_torn_prob - initial_torn_prob
+                change_wind = final_wind_prob - initial_wind_prob
+            else: #if initial (i.e., older age file) doesn't exist, just set to current probability
+                change_hail = final_hail_prob
+                change_torn = final_torn_prob
+                change_wind = final_wind_prob 
+
+        else: #if final (i.e., current object) doesn't exist, set all probs to 0 ; 
+                #shouldn't be the case very often
+            change_hail = 0.0 
+            change_torn = 0.0
+            change_wind = 0.0 
+
+
+        return change_hail, change_torn, change_wind
+
+
+    @staticmethod
+    def find_obj_age(object_id, previous_ps_df):
+        ''' Finds/returns the age of a given object--based on how long the object
+            ID number has previously existed.
+        '''
+
+        #Need to take the maximum of age columns -- look for the maximum time this
+        #storm has been around. 
+        possible_ages = previous_ps_df.loc[previous_ps_df['id'] == object_id]
+        final_age = max(possible_ages['age'])
+
+        return final_age
+
+
+    @staticmethod
+    def get_object_attribute(object_gdf, var_name):
+        ''' Extracts/returns a given piece of information (@var_name) from a 
+            geodataframe corresponding to one PS object (@object_gdf) 
+        '''
+        
+        output = object_gdf[var_name].iloc[0]
+
+
+        return output
+
+
+    @staticmethod
+    def add_gpd_buffer(in_gdf, buffer_dist):
+        '''
+        Adds a buffer to the points in @in_gdf in meters. 
+        Returns new, buffered, geopandas dataframe. 
+        @in_gdf: Incoming geopandas dataframe with list of lat/lon points
+        @buffer_dist: Buffer distance to be applied, in meters
+
+        '''
+       
+        #Make a copy of the incoming gdf
+        copy_gdf = in_gdf.copy(deep=True)
+
+        #Convert to meters 
+        copy_gdf.to_crs("EPSG:32634", inplace=True)
+
+        #Apply buffer 
+        copy_gdf.geometry = copy_gdf.geometry.buffer(buffer_dist)
+
+        #Convert back to lat/lon coords
+        copy_gdf.to_crs("EPSG:4326", inplace=True) 
+
+
+
+        return copy_gdf
+
+
+    @staticmethod
+    def get_wofs_gdf(wofs_grid):
+        ''' Obtains/Returns a geodataframe of the wofs grid based 
+            on a wofs Grid object (@wofs_grid)'''
+        
+        points = []
+        wofs_i = []
+        wofs_j = []
+        for j in range(wofs_grid.ny):
+            for i in range(wofs_grid.nx):
+                pt = Point((wofs_grid.lons[j,i], wofs_grid.lats[j,i]))
+                points.append(pt)
+                wofs_j.append(j)
+                wofs_i.append(i)
+
+
+        wofs_j = np.array(wofs_j)
+        wofs_i = np.array(wofs_i)
+        wofs_df_dict = {"wofs_j": wofs_j, "wofs_i": wofs_i}
+
+        gdf_wofs = gpd.GeoDataFrame(data=wofs_df_dict, geometry=points, crs="EPSG:4326") 
+
+        return gdf_wofs
+
+
+    @staticmethod
+    def get_ps_gdf(ps_path, ps_file):
+        ''' Obtains probSevere geoDataFrame from current probsevere file (@ps_file)'''
+
+        #Read in the data 
+        ps_data = PS.get_ps_data(ps_path, ps_file) 
+
+        #Extract the relevant information from the ps data. 
+        #NOTE: 0 for age of 0 since the file is current (although won't matter much for this) 
+        ps_df = PS.extract_ps_info(ps_data, 0, c.ps_version, True)
+        
+        #Find polygons from the set of points from each PS object
+        polygons = PS.get_polygons_from_points(ps_df['points']) 
+
+        #Create the gdf
+        df_dict = {"hail_prob": ps_df['hail_prob'], "torn_prob": ps_df['torn_prob'], "wind_prob": ps_df['wind_prob'],\
+                     "east_motion": ps_df['east_motion'], "south_motion": ps_df['south_motion'], "id": ps_df['id']}
+
+        gdf = gpd.GeoDataFrame(data=df_dict, geometry=polygons, crs="EPSG:4326")
+            
+
+        return gdf
+
+    @staticmethod
+    def get_polygons_from_points(ps_points):
+        ''' Returns a list of polygons from the sets of points associated with each object.
+            @ps_points is a pandas dataframe of a series of points 
+        '''
+
+        polygons = [] 
+
+        for obj in ps_points: 
+            pgon = Polygon(obj[0])
+            polygons.append(pgon)
+
+    
+        return polygons
+
+
+    @classmethod
+    def get_past_ps_df(cls, specs, ps_path, ps_files):
+        ''' Returns a dataframe with statistics from past PS files (that will  be relevant
+            for our predictors 
+            @specs is the ForecastSpecs object for our situation
+            @ps_path is the path to the probSevere files
+            @ps_files is the list of probSevere files (ordered most recent to oldest)
+
+        '''
+
+        #Create new dataframe 
+        prev_df = pd.DataFrame(columns = cls.HISTORICAL_VARIABLES)
+
+        for p in range(len(ps_files)):
+
+            ps_file = ps_files[p]
+            age = specs.ps_ages[p]
+
+            #Extract the information 
+            ps_data = PS.get_ps_data(ps_path, ps_file) 
+
+            if (ps_data != ""): 
+                #extract historical info
+                #False at the end because this is for past/historical data 
+                curr_df = PS.extract_ps_info(ps_data, age, c.ps_version, False)
+
+                #Merge dataframe
+                if (len(curr_df) > 0):
+                    prev_df = pd.concat([prev_df, curr_df], axis=0, ignore_index=True, copy=False)
+        
+
+
+        return prev_df 
+
+    @classmethod
+    def extract_ps_info(cls, ps_data, age, ps_version, isCurrent): 
+        ''' Extracts information from given set of ps_data (from one ps_file) 
+            and stores this information in a pandas dataframe. Ultimately, returns the
+            dataframe. 
+            @ps_data is an array of probSevere data, 
+            @age is the age corresponding to the given probSevere file, 
+            @ps_version is the probSevere version (e.g., 2 or 3)
+            @isCurrent is boolean: True if we're extracting information relevant to 
+                the current ProbSevere file (e.g., storm motion, points, hazard probs, etc.), 
+                False if we're extracting information relevant for past/historical probSevere
+                (e.g., hazard probs, ids, and ages only)  
+        '''
+
+        hail_probs = [] 
+        torn_probs = [] 
+        wind_probs = [] 
+        ids = [] 
+        ages = [] 
+        points = [] 
+        east_motion = [] 
+        south_motion = []         
+
+        if (ps_version == 2): 
+
+            if (len(ps_data['features']) > 0):
+                for i in ps_data['features']:
+                    hail_probs.append(float(i['models']['probhail']['PROB'])/100.)
+                    torn_probs.append(float(i['models']['probtor']['PROB'])/100.)
+                    wind_probs.append(float(i['models']['probwind']['PROB'])/100.)
+
+                    east_motion.append(float(i['properties']['MOTION_EAST'])*0.06) #multiply by 0.06 to convert to km/min
+                    south_motion.append(float(i['properties']['MOTION_SOUTH'])*0.06) #multiply by 0.06 to convert to km/min
+
+                    points.append(i['geometry']['coordinates'])
+
+                    ids.append(i['properties']['ID'])
+                    ages.append(age) 
+
+        #TODO: Implement ps version 3 code here
+        elif (ps_version == 3):
+            pass 
+
+        #if we're dealing with past PS files: 
+        if (isCurrent == False): 
+            df = pd.DataFrame(list(zip(ids, hail_probs, torn_probs, wind_probs, ages)), columns=cls.HISTORICAL_VARIABLES)
+
+        #if we're dealing with current PS files
+        else: 
+            df = pd.DataFrame(list(zip(ids, hail_probs, torn_probs, wind_probs, east_motion, south_motion, points)),\
+                                columns=cls.CURR_PS_VARIABLES)
+
+        return df
+
+
+    @staticmethod
+    def get_ps_data(ps_path, ps_file):
+        ''' Opens ps file given a path and filename.
+            Returns the ps data (if file is there) or a blank string
+            (i.e., "", if the data is not found. 
+        '''
+
+        try: 
+            full_fname = "%s/%s" %(ps_path, ps_file) 
+            f = open (full_fname) 
+            data = json.load(f)   
+        
+        except FileNotFoundError:
+            print ("%s not found. Adding as if it had no information" %json_file)
+            data = ""
+
+        except json.decoder.JSONDecodeError:
+            print ("%s Extra data in file. Proceeding as if it had no information." %json_file)
+            data = ""
+
+        return data
 
 class ForecastSpecs: 
 
@@ -252,7 +761,8 @@ class ForecastSpecs:
 
     def __init__(self, start_valid, end_valid, start_valid_dt, end_valid_dt, \
                     wofs_init_time, wofs_init_time_dt, forecast_window, ps_init_time,\
-                    ps_lead_time_start, ps_lead_time_end, ps_init_time_dt):
+                    ps_lead_time_start, ps_lead_time_end, ps_init_time_dt, ps_ages,\
+                    adjustable_radii_gridpoint):
 
         ''' @start valid is the start of the forecast valid period (4-character string)
             @end_valid is the end of the forecast valid period (4-character string) 
@@ -275,6 +785,14 @@ class ForecastSpecs:
             @ps_init_time_dt is the probSevere initialization time in datetime form
                 (i.e., datetime object) 
 
+            @ps_ages is a list of (potential) probSevere ages (in minutes; relative to
+                the most recent ProbSevere file) based on the probSevere input files 
+
+            @adjustable_radii_gridpoint is an array of radii (in grid points) showing 
+                how much extrapolation should be done at each extrapolation time from
+                PS file initiation time to the maximum extrapolation time (set in config
+                file)
+
         '''
 
         self.start_valid = start_valid
@@ -294,16 +812,18 @@ class ForecastSpecs:
 
         self.ps_init_time_dt = ps_init_time_dt
 
+        self.ps_ages = ps_ages 
+
+        self.adjustable_radii_gridpoint = adjustable_radii_gridpoint
+
         pass
 
     @classmethod
-    def create_forecast_specs(cls, first_ps_file, wofs_files):
-        '''Blueprint method for creating a ForecastSpecs object based on the first 
-            PS file and the list of wofs files. 
+    def create_forecast_specs(cls, ps_files, wofs_files):
+        '''Blueprint method for creating a ForecastSpecs object based on the list of
+            PS files (@ps_files) and the list of wofs files (@wofs_files)  
         '''
 
-
-        #TODO: Might have to do this with datetime objects 
         #Find start/end valid and wofs initialization time from wofs files 
         start_valid, start_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[0], "forecast")
         end_valid, end_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[-1], "forecast") 
@@ -319,8 +839,8 @@ class ForecastSpecs:
 
         valid_window = ForecastSpecs.subtract_dt(end_valid_dt, start_valid_dt, True) 
 
-        #Find PS init time from PS file 
-        ps_init_time, ps_init_date = ForecastSpecs.find_ps_date_time(first_ps_file, c.ps_version)
+        #Find PS init time from the first (most recent) PS file 
+        ps_init_time, ps_init_date = ForecastSpecs.find_ps_date_time(ps_files[0], c.ps_version)
 
         #Obtain datetime objects
         ps_init_time_dt = ForecastSpecs.str_to_dattime(ps_init_time, ps_init_date) 
@@ -333,14 +853,81 @@ class ForecastSpecs:
         #based on PS initailization time and end of the valid period
         ps_end_lead_time = ForecastSpecs.subtract_dt(end_valid_dt, ps_init_time_dt, True) 
 
+        #Find the ages associated with the different ps files 
+        ps_ages = ForecastSpecs.find_ps_ages(ps_files)
+
+        #Find array of adjustable radii (in grid points) at each extrapolation time/i.e., 
+        #how much the radius should be at each extrapolation time. 
+        #NOTE: We limit the size of "adjustable_radii_gridpoint" to the size of the ps_end_lead_time--
+        #there's no point in taking the extrapolation out farther than that. 
+        #We still need c.max_ps_extrap_time though so that the adjustable radii are applied consistently; 
+        #i.e., c.max_radius corresponds to the same (end) time for all forecasts. 
+        adjustable_radii_gridpoint = ForecastSpecs.find_adjustable_radii(c.min_radius, c.max_radius,\
+                                        c.dx_km, ps_end_lead_time, c.max_ps_extrap_time)
+
         #Create ForecastSpecs object  
 
         new_specs = ForecastSpecs(start_valid, end_valid, start_valid_dt, end_valid_dt, wofs_init_time, \
                             wofs_init_time_dt, valid_window, ps_init_time, ps_start_lead_time, ps_end_lead_time,\
-                            ps_init_time_dt) 
+                            ps_init_time_dt, ps_ages, adjustable_radii_gridpoint) 
 
         return new_specs
 
+
+    @staticmethod
+    def find_adjustable_radii(radius_min, radius_max, km_grid_spacing, ps_end_lead, max_extrap_time):
+        '''Finds the adjustable radii at each extrapolation time. Returns an array of radii 
+            at each 1-min of extrapolation time. 
+            @radius_min is the minimum radius (at time 0; generally set in the config file)
+            @radius_max is the maximum radius (at max_extrap_time; generally set in the config file) 
+            @km_grid_spacing is the grid spacing in km
+            @max_extrap_time is the maximum amount of time to do the extrapolation 
+        '''
+
+        adjustable_radii_km = np.linspace(radius_min, radius_max, int(max_extrap_time)+1)
+        adjustable_radii = [math.ceil((r - 1.5)/km_grid_spacing) for r in adjustable_radii_km]
+
+        #Filter the adjustable radii by time -- only extrapolate until the end of the ps lead time;
+        #Any further extrapolation is unnecessary. 
+        adjustable_radii = adjustable_radii[0:int(ps_end_lead)+1]
+
+        return adjustable_radii
+
+
+    @staticmethod
+    def datetime_from_ps(ps_file):
+        ''' Creates/returns a datetime object from probsevere file'''
+
+        time, date = ForecastSpecs.find_ps_date_time(ps_file, c.ps_version)
+        dt_obj = ForecastSpecs.str_to_dattime(time, date) 
+
+        return dt_obj
+
+
+    @staticmethod
+    def find_ps_ages(ps_files): 
+        ''' Finds/returns an array of ages (in minutes) of the various PS files'''
+
+        ages = [] 
+
+        first_ps_file = ps_files[0]
+        first_ps_dt = ForecastSpecs.datetime_from_ps(first_ps_file) 
+
+        for p in range(len(ps_files)):
+            curr_ps_file = ps_files[p]
+            
+            #Get datetime object 
+            curr_dt = ForecastSpecs.datetime_from_ps(curr_ps_file)
+
+            #Find the difference between the current dt and the first_ps_dt in minutes 
+            diff = ForecastSpecs.subtract_dt(first_ps_dt, curr_dt, True) 
+
+            #append to ages array 
+
+            ages.append(diff) 
+
+
+        return ages
 
     @staticmethod 
     def timedelta_to_min(in_dt):
@@ -443,7 +1030,7 @@ class ForecastSpecs:
 
 class TORP:
     
-    def __init__(self, ID, prob, lat, lon, last_update_str, torp_df_row):
+    def __init__(self, ID, prob, lat, lon, last_update_str, torp_df_row, radar):
         self.predictors = {'prob': prob}
         self.lats = [lat]
         self.lons = [lon]
@@ -458,6 +1045,7 @@ class TORP:
         self.set_storm_motion()
         self.set_future_lats_lons()
         self.update_buffers()
+        self.radar = torp_df_row['Radar']
     
     def __gt__(self, other):
         '''This method overloads the greater than comparison for TORP_List sorting.
@@ -659,8 +1247,64 @@ class TORP:
             return True
         else:
             return False
+    
+    def find_link(self, torp_dict, cutoff):
+        '''Finds the link (if one exists) for a torp object across 00z'''
         
-        return prev_overlap_gdf
+        link_torp = None
+        
+        eligible_tls = []
+        eligible_tl_dists = []
+        
+        for t_id in torp_dict:
+            if t_id == self.long_id:
+                continue
+            tl = torp_dict[t_id]
+            back = tl.array[-1]
+            
+            #does the linkable torp start within 10 minutes of 00z?
+            if (back.last_update - cutoff).seconds/60 > 10:
+                continue
+            
+            #is there a small enough time delta to consider linking the objects?
+            time_delta = back.detection_time - self.last_update
+            if (time_delta.seconds/60 > c.torp_max_time_skip) or (time_delta.seconds == 0):
+                continue
+            
+            #are they from the same radar?
+            if not (back.radar == self.radar):
+                continue
+            
+            td_sec = time_delta.seconds
+            north_motion = (self.storm_motion_north * td_sec)/1000
+            east_motion = (self.storm_motion_east * td_sec)/1000
+            
+            extrap_lon = utilities.haversine_get_lon(self.lats[0], self.lons[0], east_motion)
+            extrap_lat = utilities.haversine_get_lat(self.lats[0], self.lons[0], extrap_lon, north_motion)
+            
+            dist = utilities.haversine(extrap_lat, extrap_lon, back.lats[0], back.lons[0])
+            
+            #if within 4.5km --> they are linked since it is not closer to any other linkable torp object
+            #if in 4.5-9 range --> they are linkable, but we need to check to make sure that no other
+            #linkable torp object is closer
+            #if 9+km away, then its feasible that they are separate torp objects, cannot link
+            if dist < 4.5:
+                return tl
+            elif (dist >= 4.5) and (dist < 9):
+                eligible_tls.append(tl)
+                eligible_tl_dists.append(dist)
+            else:
+                continue
+            
+        if len(eligible_tls) == 0:
+            return None
+        
+        eligible_tls = np.array(eligible_tls)
+        eligible_tl_dists = np.array(eligible_tl_dists)
+        
+        min_dist_index = np.where(eligible_tl_dists == np.min(eligible_tl_dists))[0][0]
+        
+        return eligible_tls[min_dist_index]
 
 class TORP_List:
     
@@ -688,6 +1332,7 @@ class TORP_List:
                     del new_array
                     self.check_for_old_objects
                     self.update_front()
+                    self.update_i(i)
                     return
             #append to the end of the array since it would have returned
             #out of the function if it was to be inserted in the middle
@@ -696,6 +1341,7 @@ class TORP_List:
             self.array = np.array(new_array)
             del new_array
             self.check_for_old_objects()
+            self.update_i(i+1)
         self.update_front()
             
     def update_front(self):
@@ -703,30 +1349,57 @@ class TORP_List:
         
         front = self.array[0]
         back = self.array[-1]
-        front.predictors['age'] = round(((front.last_update - back.last_update).seconds)/60, 2)
+        front.predictors['age'] = round(((front.last_update - front.detection_time).seconds)/60, 2)
         
-        if front.predictors['age'] < c.torp_prob_change_2:
+        if (front.predictors['age'] < c.torp_prob_change_2) or (len(self.array) == 1):
             front.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = front.predictors['prob']
         else:
             closeTorp = self.find_temporal_closest(c.torp_prob_change_2)
             front.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = round(front.predictors['prob'] - closeTorp.predictors['prob'], 6)
         
-        if front.predictors['age'] < c.torp_prob_change_1:
+        if front.predictors['age'] < c.torp_prob_change_1 or (len(self.array) == 1):
             front.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = front.predictors['prob']
         else:
             closeTorp = self.find_temporal_closest(c.torp_prob_change_1)
             front.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = round(front.predictors['prob'] - closeTorp.predictors['prob'], 6)
         
         front.update_buffers()
+        
+        self.front_time = front.last_update
+        self.front_lat = front.lats[0]
+        self.front_lon = front.lons[0]
+        
+        self.back_time = back.last_update
+        self.back_lat = back.lats[0]
+        self.back_lon = back.lons[0]
+    
+    def update_i(self, i):
+        '''update a specific index of the array'''
+        torp = self.array[i]
+        torp.predictors['age'] = round(((torp.last_update - torp.detection_time).seconds)/60, 2)
+        
+        if (torp.predictors['age'] < c.torp_prob_change_2) or (len(self.array) == 1):
+            torp.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = torp.predictors['prob']
+        else:
+            closeTorp = self.find_temporal_closest(c.torp_prob_change_2, i)
+            torp.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = round(torp.predictors['prob'] - closeTorp.predictors['prob'], 6)
+        
+        if torp.predictors['age'] < c.torp_prob_change_1 or (len(self.array) == 1):
+            torp.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = torp.predictors['prob']
+        else:
+            closeTorp = self.find_temporal_closest(c.torp_prob_change_1, i)
+            torp.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = round(torp.predictors['prob'] - closeTorp.predictors['prob'], 6)
+        
+        torp.update_buffers()
             
-    def find_temporal_closest(self, time):
+    def find_temporal_closest(self, time, i = 0):
         '''Find torp in list closest to 'time' minutes ago'''
         
         minTime = 100000
         returnTorp = None
         for torp in self.array:
-            if abs(((((self.array[0].last_update - torp.last_update).seconds)/60) - time)) < abs(minTime):
-                minTime = abs(((((self.array[0].last_update - torp.last_update).seconds)/60) - time))
+            if abs(((((self.array[i].last_update - torp.last_update).seconds)/60) - time)) < abs(minTime):
+                minTime = abs(((((self.array[i].last_update - torp.last_update).seconds)/60) - time))
                 returnTorp = torp
         
         return returnTorp
@@ -745,14 +1418,23 @@ class TORP_List:
                 del_indices.append(i)
             
         self.array = np.delete(self.array, del_indices)
+    
+    def link_torp(self, tl):
+        '''used for appending torp lists across 00z'''
+        for torp in tl.array:
+            torp.long_id = self.array[0].long_id
+            torp.detection_time = self.array[0].detection_time
+            self.insert(torp)
                 
     @staticmethod
-    def gen_torp_dict_from_file(path, grid, td = None):
+    def gen_torp_dict_from_file(path, grid, cutoff, td = None):
         '''Given a torp csv file from a radar, this function will create
         TORP objects and add them to a dictionary of TORP lists. Each list
         will be full of TORP objects with the same long id but different
         'last updated' times. This will allow for all TORP objects of the
-        same storm to be grouped together, but all storms separated'''
+        same storm to be grouped together, but all storms separated. Also,
+        TORP objects/lists are not added to the dictionary if they are not
+        on the given wofs grid'''
         
         #if no torp list was passed, create one to add new torp objects to,
         #otherwise, use passed torp list
@@ -774,7 +1456,7 @@ class TORP_List:
             if not isinstance(IDs[0], str):
                 continue
             #create the TORP object
-            torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update, torp_df.iloc[i])
+            torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update, torp_df.iloc[i], torp_df)
             #if it's out of bounds for the wofs grid of the day, then ignore it
             if not torp.check_bounds(grid):
                 continue
@@ -788,18 +1470,82 @@ class TORP_List:
                 torp_list = TORP_List()
                 torp_list.insert(torp)
                 torp_dict[torp.long_id] = torp_list
+        
+        if c.is_train_mode:
+            torp_dict = TORP_List.link_torps(torp_dict, cutoff)
             
+        return torp_dict
+    
+    @staticmethod
+    def link_torps(torp_dict, cutoff):
+        '''If training, we need to link torp objects to have the same id across 00z'''
+        
+        keys = list(torp_dict.keys())
+        for t_id in keys:
+            try:
+                tl = torp_dict[t_id]
+            except:
+                #torp has already been linked
+                continue
+            front_t = tl.array[0]
+            back_t = tl.array[-1]
+            
+            if (cutoff - front_t.last_update).seconds/60 < 10:
+                #find torp_list to link to, if exists
+                to_link = front_t.find_link(torp_dict, cutoff)
+                if not (to_link == None):
+                    del_id = to_link.array[0].long_id
+                    tl.link_torp(to_link)
+                    del torp_dict[del_id]
+        
         return torp_dict
     
     #change to generating a dictionary
     @staticmethod
     def gen_full_dict_from_file_list(paths, grid):
+        '''Get the torp dictionary full of torp lists representing each object through time.
+        Only keep torps that are on the wofs grid. Also, this finds the "true" init time
+        after the dictionary is created. This is used in subsequent functions when mapping
+        to the wofs grid.'''
+        
         true_init = datetime.datetime(1970, 1, 1, 0, 0, 0)
+        
+        if c.is_train_mode:
+            #set the cutoff to the last file on the date, sometimes a bit after 00z
+            #ok to use my file paths here since it's training and i know the
+            #training torp directory
+            cutoff_candidates = []
+            for path in paths:
+                #if trained with file paths in a different spot, may need to change the [7]
+                dir_date = path.split('/')[7] + '-000000'
+                date_time = utilities.parse_date(path.split('/')[-1].split('_')[0])
+                date = utilities.parse_date(dir_date)
+                if not (date.day == date_time.day):
+                    cutoff_candidates.append(date_time)
+            if len(cutoff_candidates) == 0:
+                date = utilities.parse_date(paths[0].split('/')[-1].split('_')[0])
+                if date.hour > 0:
+                    date.replace(hour=0, minute=0, second=0)
+                else:
+                    date.replace(day=date.day+1, hour=0, minute=0, second=0)
+                cutoff = date
+            else:
+                cutoff = np.max(cutoff_candidates)
+        else:
+            #doesn't really matter since we don't have to do linking,
+            #but we'll set it to 00z of the day anyway
+            date = utilities.parse_date(paths[0].split('/')[-1].split('_')[0])
+            if date.hour > 0:
+                date.replace(hour=0, minute=0, second=0)
+            else:
+                date.replace(day=date.day+1, hour=0, minute=0, second=0)
+            cutoff = date
+        
         for i, path in enumerate(paths):
             if i == 0:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, cutoff)
             else:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, torp_dict)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, cutoff, torp_dict)
             
             file = path.split('/')[-1]
             last_update = file.split('_')[0]
@@ -811,7 +1557,7 @@ class TORP_List:
         return torp_dict, true_init
     
     @staticmethod
-    def gen_wofs_points_gdf(torp_dict, true_init, lead_time_int):
+    def gen_wofs_points_gdf(torp_dict, true_init, lead_time_int, wofs_gdf):
         '''This method will return a gdf with wofs_i and wofs_j values along with
         the associated torp_id. This will allow for easily applying TORP object
         predictors to each point on the wofs map.
@@ -834,9 +1580,23 @@ class TORP_List:
         return gdf
     
     @staticmethod
-    def overlap_gdf_to_npy(gdf, torp_dict):
+    def overlap_gdf_to_npy(gdf, torp_dict, txt_file):
+        '''This function takes the gdf of overlap points and corresponding torp objects and makes the final npy
+        of torp predictors. It also applies the convolutions to get the max values on the grid within x km.
+        These radii to search in the convolutions as well as the method of convolution (max, min, absolute value)
+        can be set in the config file.'''
+        
         wofs_i = gdf.wofs_i.values
         wofs_j = gdf.wofs_j.values
+        
+        km_spacing = c.wofs_km_spacing
+        radii_km = c.torp_conv_dists
+        n_sizes = []
+        for i in range(len(radii_km)):
+            r = radii_km[i]
+            n_sizes.append(int(((r/km_spacing)*2)+3))
+
+        conv_footprints = utilities.get_footprints(n_sizes, radii_km, km_spacing)
         
         for t_id in torp_dict:
             t = torp_dict[t_id]
@@ -856,17 +1616,73 @@ class TORP_List:
                 array[i, j] = torp_predictors[predictor]
                 npy_predictors_dict[predictor] = array
         
+        if not os.path.isfile(txt_file):  
+            f = open(txt_file, "w")
+        
         i = 0
         for predictor in npy_predictors_dict:
             array_2d = npy_predictors_dict[predictor]
+            if predictor in c.torp_max_convs:
+                var_method = "max"
+            elif predictor in c.torp_min_convs:
+                var_method = "min"
+            elif predictor in c.torp_abs_convs:
+                var_method = "abs"
+            else:
+                var_method = "none"
+            
+            if not (var_method == "none"):
+                array_2d_15km = utilities.add_convolutions(var_method, array_2d, conv_footprints[0])
+                array_1d_15km = array_2d_15km.reshape((90000,1))
+                array_2d_30km = utilities.add_convolutions(var_method, array_2d, conv_footprints[1])
+                array_1d_30km = array_2d_30km.reshape((90000,1))
+                array_2d_45km = utilities.add_convolutions(var_method, array_2d, conv_footprints[2])
+                array_1d_45km = array_2d_45km.reshape((90000,1))
+                array_2d_60km = utilities.add_convolutions(var_method, array_2d, conv_footprints[3])
+                array_1d_60km = array_2d_60km.reshape((90000,1))
+            
             array_1d = array_2d.reshape((90000,1))
             if i == 0:
                 full_npy = array_1d
+                if not (var_method == "none"):
+                    full_npy = np.append(full_npy, array_1d_15km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_30km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_45km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_60km, axis = 1)
                 i += 1
             else:
                 full_npy = np.append(full_npy, array_1d, axis = 1)
-        
+                if not (var_method == "none"):
+                    full_npy = np.append(full_npy, array_1d_15km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_30km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_45km, axis = 1)
+                    full_npy = np.append(full_npy, array_1d_60km, axis = 1)
+            
+            if not os.path.isfile(txt_file):
+                f.write(predictor + '\n')
+                f.write(predictor + '_' + var_method + '_15km' + '\n')
+                f.write(predictor + '_' + var_method + '_30km' + '\n')
+                f.write(predictor + '_' + var_method + '_45km' + '\n')
+                f.write(predictor + '_' + var_method + '_60km' + '\n')
+        if not os.path.isfile(txt_file):    
+            f.close()
         return full_npy
+    
+    @staticmethod
+    def gen_torp_npys_all_lead_times(torp_files, wofs_grid):
+        wofs_gdf = PS.get_wofs_gdf(wofs_grid)
+        td, true_init = TORP_List.gen_full_dict_from_file_list(torp_files, wofs_grid)
+        if true_init.minute == 30:
+            for i in range(1,5):
+                gdf = TORP_List.gen_wofs_points_gdf(td, true_init, i, wofs_gdf)
+                npy = TORP_List.overlap_gdf_to_npy(gdf, td, c.torp_vars_filename)
+                torp_npys.append(npy)
+        else:
+            for i in range(1,7):
+                gdf = TORP_List.gen_wofs_points_gdf(td, true_init, i, wofs_gdf)
+                npy = TORP_List.overlap_gdf_to_npy(gdf, td, c.torp_vars_filename)
+                torp_npys.append(npy)
+        return torp_npys
 
 def main():
     '''Main Method'''
