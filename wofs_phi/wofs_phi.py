@@ -37,7 +37,7 @@ import geopandas as gpd
 import multiprocessing as mp
 import itertools
 from multiprocessing.pool import Pool
-from datetime import datetime
+from datetime import datetime, timedelta
 import datetime as dt
 #from skexplain.common.multiprocessing_utils import run_parallel, to_iterator
 import netCDF4 as nc
@@ -116,12 +116,16 @@ class MLGenerator:
         combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lons, "lon") 
         
         #Add wofs y points 
-        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "yvalue") 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "wofs_y") 
 
         #Add wofs x points
-        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "xvalue") 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "wofs_x") 
 
-        #Add convolutions -- TODO
+        #Add wofs initialization time 
+        combined_xr = pex.add_single_field(combined_xr, Wofs.INIT_TIME_DICT[forecast_specs.wofs_init_time]\
+                                , "wofs_init_time", fcst_grid.ny, fcst_grid.nx) 
+
+        #Add convolutions
         #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
         #Probably can compute stuff using the predictor_radii_km in config file 
         #rf_sizes, grid spacing of wofs
@@ -129,26 +133,80 @@ class MLGenerator:
                                 forecast_specs.allMethods, forecast_specs.singlePtFields, \
                                 c.predictor_radii_km, c.dx_km)
 
+        #Get 1d predictor names 
+        predictor_list = pex.get_predictor_list(forecast_specs.allFields, \
+                                forecast_specs.singlePtFields, c.predictor_radii_km, \
+                                c.extra_predictor_names)
 
-        print (conv_predictors_ds)
+        #Extract 1d predictors  
+        one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
+                            forecast_specs, fcst_grid)
         
-        torp_predictors = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs)
+        #Save predictors to file (if we're training)
+        if (c.is_train_mode == True):
         
-        quit() 
+            torp_predictors = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs)
 
-        #Convert to 1d predictor list 
+            #Get the filenames used for saving 
+            full_npy_fname = MLGenerator.get_full_npy_filename(forecast_specs)
+            dat_fname = MLGenerator.get_dat_filename(forecast_specs)
+            rand_inds_fname = MLGenerator.get_rand_inds_filename(forecast_specs)
+
+            #Save predictors to appropriate files
+            pex.save_predictors(one_d_pred_array, c.sample_rate, fcst_grid, \
+                        c.train_full_npy_dir, full_npy_fname, c.train_dat_dir,\
+                        dat_fname, rand_inds_fname)
+
+        #TODO
+        #Revamp ProbSevere class to accept all files in last 3 hours-- change how I do
+
+        
+        #TODO: Put in another method 
+        #If we're not in training mode...
+        else: 
+
+            #Load RF, run the predictors through RF 
 
 
-        #Save predictors to file (if we're training) 
+            #Save predictions to ncdf 
 
-
-        #Load RF, run the predictors through RF 
-
-
-        #Save predictions to ncdf 
+            pass
 
 
         return
+
+    @staticmethod 
+    def get_full_npy_filename(fSpecs):
+        '''Sets and returns the filename for the full_npy file (holding the full array of predictors)
+            given a ForecastSpecs object (@fSpecs) 
+        '''
+
+        use_fname = "wofs1d_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.start_valid, fSpecs.end_valid) 
+
+        return use_fname
+
+
+    @staticmethod
+    def get_dat_filename(fSpecs):
+        '''Sets and returns the filename for the dat file (holding the randomly-sampled 
+            array of predictors) given a ForecastSpecs object (@fSpecs) 
+        '''
+       
+        use_fname = "wofs1d_%s_%s_v%s-%s.dat" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.start_valid, fSpecs.end_valid)
+
+ 
+        return use_fname
+
+
+    @staticmethod 
+    def get_rand_inds_filename(fSpecs):
+        
+        use_fname = "rand_inds_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.start_valid, fSpecs.end_valid)
+
+        return use_fname
 
 
 class Wofs:
@@ -159,6 +217,14 @@ class Wofs:
 
     #Will compute number of members exceeding this threshold 
     DBZ_THRESH = 40 
+
+    #Dictionary converting wofs initialization time strings to integers in order 
+    #(to be used for converting wofs initialization times to 1-d predictors
+    INIT_TIME_DICT = {'1700':1, '1730':2, '1800':3, '1830':4, '1900':5, '1930':6,\
+                        '2000':7, '2030':8, '2100':9, '2130':10, '2200':11, '2230':12,\
+                        '2300':13, '2330':14, '0000':15, '0030':16, '0100':17, '0130':18,\
+                        '0200':19, '0230':20, '0300':21, '0330':22, '0400':23, '0430':24,\
+                        '0500':25, '0530':26, '0600':27} 
 
     #Legacy file naming conventions 
     ENS_VARS = ["ws_80", "dbz_1km", "wz_0to2_instant", "uh_0to2_instant",  "uh_2to5", "w_up",\
@@ -184,7 +250,7 @@ class Wofs:
         #self.gdf = gdf
         self.xarr = xarr
 
-        pass
+        return 
 
 
     @classmethod
@@ -195,8 +261,6 @@ class Wofs:
             @wofs_path is the path to the wofs files 
             @wofs_files is a list of wofs files that are considered
         '''
-
-            #TODO: We may need to have WoFS_ALL, WoFS_ENV,  etc. Unclear how to handle.  
 
         #Get the wofs fields and methods from text files (set in the config.py file)
         wofs_fields = np.genfromtxt(c.wofs_fields_file, dtype='str') 
@@ -334,7 +398,7 @@ class WoFS_Agg:
             #Set the object's grid time list 
             wofs_agg_obj.set_grid_time_list() 
 
-            #Set the object's temporal aggregation -- TODO
+            #Set the object's temporal aggregation
             wofs_agg_obj.set_temporal_aggregation()
 
             #Add wofs_agg_obj to list 
@@ -601,13 +665,6 @@ class WoFS_Agg:
         return wofs_var, mem_index, threshold_val
 
 
-    #TODO: 
-    @staticmethod
-    def read_grids():
-
-        return 
-
-
 
 class Grid: 
     '''Handles the (wofs) grid attributes.'''
@@ -815,7 +872,7 @@ class PS_WoFS:
         #Apply the probability threshold 
         hazard_gdf = PS_WoFS.threshold_probability(hazard_gdf, c.ps_thresh)
     
-        #TODO: Do the assignments/updates -- do point by point
+        #Do the assignments/updates -- do point by point
         for l in range(len(points_to_change)): 
             y = points_to_change['wofs_j'].iloc[l]
             x = points_to_change['wofs_i'].iloc[l]
@@ -1244,7 +1301,7 @@ class PS:
                 real_ys = np.arange(y-ymax, y+ymax+1)
                 real_xs = np.arange(x-xmax, x+xmax+1)
 
-                #TODO: Check if points are within radius. 
+                #Check if points are within radius. 
                 patch_xs = []
                 patch_ys = []
                 patch_inds = []
@@ -1575,7 +1632,8 @@ class ForecastSpecs:
                     wofs_init_time, wofs_init_time_dt, forecast_window, ps_init_time,\
                     ps_lead_time_start, ps_lead_time_end, ps_init_time_dt, ps_ages,\
 
-                    adjustable_radii_gridpoint, allFields, allMethods, singlePtFields):
+                    adjustable_radii_gridpoint, allFields, allMethods, singlePtFields,\
+                    before_00z_date):
 
         ''' @start valid is the start of the forecast valid period (4-character string)
             @end_valid is the end of the forecast valid period (4-character string) 
@@ -1610,6 +1668,8 @@ class ForecastSpecs:
             @allMethods is a list of preprocessing methods corresponding to
                 allFields (e.g., max, min, abs, minbut) 
             @singlePtFields is a list of the single point fields (ml name notation) 
+            @before_00z_date is the 8-character date string (YYYMMDD) corresponding
+                to the date of the forecast before 00Z
 
         '''
 
@@ -1638,6 +1698,8 @@ class ForecastSpecs:
         self.allMethods = allMethods
         self.singlePtFields = singlePtFields
 
+        self.before_00z_date = before_00z_date
+
         pass
 
     @classmethod
@@ -1664,6 +1726,10 @@ class ForecastSpecs:
         start_valid_dt = ForecastSpecs.str_to_dattime(start_valid, start_valid_date) 
         end_valid_dt = ForecastSpecs.str_to_dattime(end_valid, end_valid_date) 
         wofs_init_time_dt = ForecastSpecs.str_to_dattime(wofs_init_time, wofs_init_date) 
+
+
+        #Get the date before 00z -- Like our UseDate in previous script iterations
+        date_before_00z = ForecastSpecs.get_date_before_00z(wofs_init_time_dt, c.next_day_inits)
 
         #Find the length of the forecast time window based on the start_valid_dt and end_valid_dt
         #datetime objects 
@@ -1709,9 +1775,39 @@ class ForecastSpecs:
         new_specs = ForecastSpecs(start_valid, end_valid, start_valid_dt, end_valid_dt, wofs_init_time, \
                             wofs_init_time_dt, valid_window, ps_init_time, ps_start_lead_time, ps_end_lead_time,\
                             ps_init_time_dt, ps_ages, adjustable_radii_gridpoint,\
-                            all_fields, all_methods, single_points) 
+                            all_fields, all_methods, single_points, date_before_00z) 
 
         return new_specs
+
+
+    @staticmethod 
+    def get_date_before_00z(wofsInitTimeDT, nextDayWofsInits):
+        '''Returns the 8 character string (YYYYMMDD) corresponding to the forecast
+            date before 00z
+            @wofsInitTimeDT is the datetime object corresponding to the wofs 
+                intitialization time 
+            @nextDayWofsInits is the list of next-day wofs initialization times 
+                (i.e., wofs initialization times at and after 00z). These will
+                be used to determine if the forecast period is after 00z. 
+        '''
+
+
+        #Get the 8-character string from date time object 
+        date_string, time_string = ForecastSpecs.dattime_to_str(wofsInitTimeDT)
+
+        #If this string is in the nextDayWoFSinits, then we need to find the
+        #string corresponding to the day before. 
+
+        if (time_string in nextDayWofsInits):
+                
+            #Get datetime object corresponding to one day before
+            day_before_dt = wofsInitTimeDT - timedelta(days=1)
+            
+            #Get updated date_string
+            date_string, time_string = ForecastSpecs.dattime_to_str(day_before_dt) 
+
+
+        return date_string
 
 
     @staticmethod
@@ -1793,6 +1889,20 @@ class ForecastSpecs:
             difference = ForecastSpecs.timedelta_to_min(difference)
 
         return difference
+
+    @staticmethod 
+    def dattime_to_str(in_dt):
+        '''Converts incoming datetime object (@in_dt) to 8 character date string
+            and 4-character time string
+            @Returns 8-character date string (YYYYMMDD) and 4-character time 
+                string (HHMM) 
+        '''
+
+        new_date_string = in_dt.strftime("%Y%m%d") 
+        new_time_string = in_dt.strftime("%H%M")
+    
+
+        return new_date_string, new_time_string
 
 
     @staticmethod 

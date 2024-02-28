@@ -54,6 +54,27 @@ def add_gridded_field(in_xr, gridded_field, name):
     return in_xr
 
 
+def add_single_field(in_xr, single_field, name, nY, nX):
+
+    ''' Adds single (i.e., non-gridded) field to xarray of predictors 
+        (e.g., wofs initialization time). The idea is we'll convert
+        the single field to a gridded field where the entire grid has
+        the same number.
+        @in_xr is the xarray to add the predictor to
+        @single_field is the 1-d number to add
+        @name is the name that this new field will have in the xarray
+        @nY is the number of y points 
+        @nX is the number of x points 
+    '''
+    
+    to_add = np.ones((nY, nX))*single_field
+    
+    #Now, add this 2-d field 
+    in_xr = add_gridded_field(in_xr, to_add, name)
+    
+        
+    return in_xr
+
 def get_footprints(predRadiiKm, gridSpacingKm):
 
     '''Gets/returns list of binary grid of "footprints" defining the circular 
@@ -210,5 +231,123 @@ def add_convolutions(in_xr, footprint_type, allFields, allMethods, \
 
 
     return in_xr
+
+def get_predictor_list(allFields, singlePtFields, pred_radii_km, \
+            extraPredictors):
+    '''Returns a full list of the predictors used -- including lat, lon, and all 
+        spatial convolutions. -- Also add wofs grid point and wofs initialization time 
+        @allFields is a list of all the predictor fields (in ml name
+            convention)
+        @singlePtFields is a list of the points where we will NOT
+            take convolutions; i.e., we will only use the value at
+            a single point. 
+        @pred_radii_km is a list of radii (in km) over which to 
+            take the convolutions
+        @extraPredictors is the list of extra predictors not originally included 
+            in the standard set of wofs or probSevere field list (e.g., lat, lon, 
+            wofs point, wofs initialization time, etc.) 
+    '''
+
+    new_names = [] #Will hold a list of the new names 
+
+    for r in range(len(pred_radii_km)):
+        radii_km = pred_radii_km[r]
+        for v in range(len(allFields)):
+            curr_name = allFields[v]
+            if (radii_km == 0): #If no spatial smoothing, there's no "r0" appended
+                new_names.append(curr_name)
+            else: #for the larger neighborhoods
+                if (curr_name not in singlePtFields):
+                    new_name = "%s_r%s" %(curr_name, radii_km)
+                    new_names.append(new_name)
+    
+
+    #Add single point/non-gridded predictors 
+    for pred in extraPredictors: 
+        new_names.append(pred) 
+
+    return new_names
+
+
+def extract_1d(all_pred_xr, predictorList, fSpecs, fGrid):
+    '''Returns an array of 1-d predictors
+        @all_pred_xr is the xarray Dataset containing all of the predictor 
+            variables and their convolutions, shape (nY, nX)
+        @predictorList is a list of all predictor fields (with convolutions named)
+        @fSpecs is a ForecastSpecs object for the current situation 
+        @fGrid is a Grid object for the current wofs grid 
+            will have to be added separately 
+    '''
+
+    #First, establish nY, nX, nV for convenience
+    nY = fGrid.ny #num y points
+    nX = fGrid.nx #num x points
+    nV = len(predictorList) #num predictors
+    nSamples = int(nY*nX) #total number of grid points
+    
+    #Create new 3d array to hold the predictors 
+    predictor_array = np.zeros((nY, nX, nV))
+    
+    #Make the assignments to the 3d array for each variable
+    for v in range(nV):
+        curr_var = predictorList[v] 
+        predictor_array[:,:,v] = all_pred_xr[curr_var].to_numpy() 
+
+    #Now flatten, since we want 1-d predictors (for each variable) 
+    predictor_array = predictor_array.reshape(nSamples, -1) 
+
+    return predictor_array 
+
+
+def save_predictors(full_pred_array, samp_rate, fGrid, full_npy_outdir, npy_filename, \
+                    dat_outdir, dat_filename, rand_inds_filename):
+
+    '''Saves predictors to files for training. Includes capability to randomly
+        sample @samp_rate fraction of the dataset for training. Saves both
+        full files and randomly sampled files to outdirectories indicated.
+        @full_pred_array is the predictor array (nPoints, nVariables) 
+        @samp_rate is the float indicating the fraction of total number of 
+            points to randomly sample for training 
+        @fGrid is the current Grid object for the current wofs grid/situation
+        @full_npy_outdir is the path telling where to store the npy files 
+            holding the full 2-d predictor grid
+        @npy_filename is the filename (ending in .npy) where we will
+            save the full predictor array
+        @dat_outdir is the path telling where to store the dat files holding
+            the randomly sampled predictor data. 
+        @dat_filename is the filename (ending in .dat) where we will save
+            the sampled predictor array. 
+        @rand_inds_filename is the filename (ending in .npy) where we will save the array 
+            of randomly-sampled indices
+    '''
+
+
+    #For convenience: 
+    nY = fGrid.ny
+    nX = fGrid.nx
+    nTotal = int(nY*nX)
+    nSamples = int(nTotal*samp_rate)
+
+    #Get random indices to sample
+    if (samp_rate < 1.):
+        rand_inds = np.random.choice(np.arange(nTotal), size=nSamples, replace=False)
+
+
+        sampled_predictions = full_pred_array[rand_inds, :]
+
+        #Convert to float 32
+        full_predictions = np.float32(full_pred_array)
+        sampled_predictions = np.float32(sampled_predictions)
+
+        #Save to file: 
+        np.save("%s/%s" %(full_npy_outdir, npy_filename), full_predictions) 
+        sampled_predictions.tofile("%s/%s" %(dat_outdir, dat_filename))
+
+        #Save rand_inds too 
+        np.save("%s/%s" %(dat_outdir, rand_inds_filename), rand_inds)
+
+
+
+    return 
 
 

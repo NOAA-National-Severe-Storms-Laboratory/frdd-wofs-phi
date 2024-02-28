@@ -13,7 +13,17 @@
 #"phi_tool" for forecast mode in PHI Tool. 
 mode = "forecast" 
 
-is_train_mode = False
+#True if used for training; False if used for prediction/real-time
+is_train_mode = True
+
+#Fraction of data to randomly sample for training
+sample_rate = 0.1 
+
+#Path to full_npy directory for training
+train_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/full_npy"
+
+#Path to dat directory for training
+train_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/dat"
 
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
@@ -42,6 +52,9 @@ conv_type = "circle"
 
 predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially in km for predictors
 
+
+#Fields not part of the standard wofs or ProbSevere fields that we'd like to include as extras 
+extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 
 obs_radii = ["30.0", "15.0", "7.5", "39.0"]
 final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
