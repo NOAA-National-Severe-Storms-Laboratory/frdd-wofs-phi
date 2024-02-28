@@ -142,13 +142,21 @@ class MLGenerator:
 
         #Save predictors to file (if we're training)
         if (c.is_train_mode == True):
-            pex.save_predictors(one_d_pred_array, c.sample_rate, forecast_specs, fcst_grid, \
-                        c.train_full_npy_dir, c.train_dat_dir)
+
+            #Get the filenames used for saving 
+            full_npy_fname = MLGenerator.get_full_npy_filename(forecast_specs)
+            dat_fname = MLGenerator.get_dat_filename(forecast_specs)
+            rand_inds_fname = MLGenerator.get_rand_inds_filename(forecast_specs)
+
+            print (full_npy_fname)
+            print (dat_fname) 
+            print (rand_inds_fname) 
+
+            pex.save_predictors(one_d_pred_array, c.sample_rate, fcst_grid, \
+                        c.train_full_npy_dir, full_npy_fname, c.train_dat_dir,\
+                        dat_fname, rand_inds_fname)
 
         #TODO
-        #Get UseDate/date_before_00z -- add to ForecastSpecs
-        #Make static method for training filenames
-        #Update save_predictors
         #Revamp ProbSevere class to accept all files in last 3 hours-- change how I do
 
         
@@ -165,6 +173,39 @@ class MLGenerator:
 
 
         return
+
+    @staticmethod 
+    def get_full_npy_filename(fSpecs):
+        '''Sets and returns the filename for the full_npy file (holding the full array of predictors)
+            given a ForecastSpecs object (@fSpecs) 
+        '''
+
+        use_fname = "wofs1d_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.start_valid, fSpecs.end_valid) 
+
+        return use_fname
+
+
+    @staticmethod
+    def get_dat_filename(fSpecs):
+        '''Sets and returns the filename for the dat file (holding the randomly-sampled 
+            array of predictors) given a ForecastSpecs object (@fSpecs) 
+        '''
+       
+        use_fname = "wofs1d_%s_%s_v%s-%s.dat" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.start_valid, fSpecs.end_valid)
+
+ 
+        return use_fname
+
+
+    @staticmethod 
+    def get_rand_inds_filename(fSpecs):
+        
+        use_fname = "rand_inds_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.start_valid, fSpecs.end_valid)
+
+        return use_fname
 
 
 class Wofs:
