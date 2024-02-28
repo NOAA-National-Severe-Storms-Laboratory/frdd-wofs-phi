@@ -13,7 +13,17 @@
 #"phi_tool" for forecast mode in PHI Tool. 
 mode = "forecast" 
 
-is_train_mode = False
+#True if used for training; False if used for prediction/real-time
+is_train_mode = True
+
+#Fraction of data to randomly sample for training
+sample_rate = 0.1 
+
+#Path to full_npy directory for training
+train_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/full_npy"
+
+#Path to dat directory for training
+train_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/dat"
 
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 

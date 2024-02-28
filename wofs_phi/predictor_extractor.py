@@ -299,3 +299,53 @@ def extract_1d(all_pred_xr, predictorList, fSpecs, fGrid):
     return predictor_array 
 
 
+def save_predictors(full_pred_array, samp_rate, fSpecs, fGrid, full_npy_outdir, dat_outdir):
+
+    '''Saves predictors to files for training. Includes capability to randomly
+        sample @samp_rate fraction of the dataset for training. Saves both
+        full files and randomly sampled files to outdirectories indicated.
+        @full_pred_array is the predictor array (nPoints, nVariables) 
+        @samp_rate is the float indicating the fraction of total number of 
+            points to randomly sample for training 
+        @fSpecs is the current ForecastSpecs object for the situation
+        @fGrid is the current Grid object for the current wofs grid/situation
+        @full_npy_outdir is the path telling where to store the npy files 
+            holding the full 2-d predictor grid
+        @dat_outdir is the path telling where to store the dat files holding
+            the randomly sampled predictor data. 
+    '''
+
+
+    #For convenience: 
+    nY = fGrid.ny
+    nX = fGrid.nx
+    nTotal = int(nY*nX)
+    nSamples = int(nTotal*samp_rate)
+
+    iTime = fSpecs.wofs_init_time
+    startValid = fSpecs.start_valid
+    endValid = fSpecs.end_valid
+
+    #TODO: Need a useDate 
+
+    #Get random indices to sample
+    if (samp_rate < 1.):
+        rand_inds = np.random.choice(np.arange(nTotal), size=nSamples, replace=False)
+
+
+        sampled_predictions = full_pred_array[rand_inds, :]
+
+        #Convert to float 32
+        full_predictions = np.float32(full_pred_array)
+        sampled_predictions = np.float32(sampled_predictions)
+
+        #Save to file -- TODO: name the file elsewhere and pass it in
+        np.save("%s/wofs1d_%s_%s_v%s-%s.npy" %(full_npy_outdir, useDate, iTime, startValid, endValid), full_predictions)
+        sampled_predictions.tofile("%s/wofs1d_%s_%s_v%s-%s.dat" %(dat_outdir, useDate, iTime, startValid, endValid))
+        #Save rand_inds too
+        np.save("%s/rand_inds_%s_%s_v%s-%s.npy" %(dat_outdir, useDate, iTime, startValid, endValid), rand_inds)
+
+
+    return 
+
+

@@ -37,7 +37,7 @@ import geopandas as gpd
 import multiprocessing as mp
 import itertools
 from multiprocessing.pool import Pool
-from datetime import datetime
+from datetime import datetime, timedelta
 #from skexplain.common.multiprocessing_utils import run_parallel, to_iterator
 import netCDF4 as nc
 import os
@@ -123,8 +123,6 @@ class MLGenerator:
         combined_xr = pex.add_single_field(combined_xr, Wofs.INIT_TIME_DICT[forecast_specs.wofs_init_time]\
                                 , "wofs_init_time", fcst_grid.ny, fcst_grid.nx) 
 
-        print (combined_xr)
-
         #Add convolutions
         #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
         #Probably can compute stuff using the predictor_radii_km in config file 
@@ -138,18 +136,32 @@ class MLGenerator:
                                 forecast_specs.singlePtFields, c.predictor_radii_km, \
                                 c.extra_predictor_names)
 
-       
         #Extract 1d predictors  
         one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
                             forecast_specs, fcst_grid)
 
-        #Save predictors to file (if we're training) 
+        #Save predictors to file (if we're training)
+        if (c.is_train_mode == True):
+            pex.save_predictors(one_d_pred_array, c.sample_rate, forecast_specs, fcst_grid, \
+                        c.train_full_npy_dir, c.train_dat_dir)
+
+        #TODO
+        #Get UseDate/date_before_00z -- add to ForecastSpecs
+        #Make static method for training filenames
+        #Update save_predictors
+        #Revamp ProbSevere class to accept all files in last 3 hours-- change how I do
+
+        
+        #TODO: Put in another method 
+        #If we're not in training mode...
+        else: 
+
+            #Load RF, run the predictors through RF 
 
 
-        #Load RF, run the predictors through RF 
+            #Save predictions to ncdf 
 
-
-        #Save predictions to ncdf 
+            pass
 
 
         return
@@ -1578,7 +1590,8 @@ class ForecastSpecs:
                     wofs_init_time, wofs_init_time_dt, forecast_window, ps_init_time,\
                     ps_lead_time_start, ps_lead_time_end, ps_init_time_dt, ps_ages,\
 
-                    adjustable_radii_gridpoint, allFields, allMethods, singlePtFields):
+                    adjustable_radii_gridpoint, allFields, allMethods, singlePtFields,\
+                    before_00z_date):
 
         ''' @start valid is the start of the forecast valid period (4-character string)
             @end_valid is the end of the forecast valid period (4-character string) 
@@ -1613,6 +1626,8 @@ class ForecastSpecs:
             @allMethods is a list of preprocessing methods corresponding to
                 allFields (e.g., max, min, abs, minbut) 
             @singlePtFields is a list of the single point fields (ml name notation) 
+            @before_00z_date is the 8-character date string (YYYMMDD) corresponding
+                to the date of the forecast before 00Z
 
         '''
 
@@ -1641,6 +1656,8 @@ class ForecastSpecs:
         self.allMethods = allMethods
         self.singlePtFields = singlePtFields
 
+        self.before_00z_date = before_00z_date
+
         pass
 
     @classmethod
@@ -1667,6 +1684,10 @@ class ForecastSpecs:
         start_valid_dt = ForecastSpecs.str_to_dattime(start_valid, start_valid_date) 
         end_valid_dt = ForecastSpecs.str_to_dattime(end_valid, end_valid_date) 
         wofs_init_time_dt = ForecastSpecs.str_to_dattime(wofs_init_time, wofs_init_date) 
+
+
+        #Get the date before 00z -- Like our UseDate in previous script iterations
+        date_before_00z = ForecastSpecs.get_date_before_00z(wofs_init_time_dt, c.next_day_inits)
 
         #Find the length of the forecast time window based on the start_valid_dt and end_valid_dt
         #datetime objects 
@@ -1712,9 +1733,39 @@ class ForecastSpecs:
         new_specs = ForecastSpecs(start_valid, end_valid, start_valid_dt, end_valid_dt, wofs_init_time, \
                             wofs_init_time_dt, valid_window, ps_init_time, ps_start_lead_time, ps_end_lead_time,\
                             ps_init_time_dt, ps_ages, adjustable_radii_gridpoint,\
-                            all_fields, all_methods, single_points) 
+                            all_fields, all_methods, single_points, date_before_00z) 
 
         return new_specs
+
+
+    @staticmethod 
+    def get_date_before_00z(wofsInitTimeDT, nextDayWofsInits):
+        '''Returns the 8 character string (YYYYMMDD) corresponding to the forecast
+            date before 00z
+            @wofsInitTimeDT is the datetime object corresponding to the wofs 
+                intitialization time 
+            @nextDayWofsInits is the list of next-day wofs initialization times 
+                (i.e., wofs initialization times at and after 00z). These will
+                be used to determine if the forecast period is after 00z. 
+        '''
+
+
+        #Get the 8-character string from date time object 
+        date_string, time_string = ForecastSpecs.dattime_to_str(wofsInitTimeDT)
+
+        #If this string is in the nextDayWoFSinits, then we need to find the
+        #string corresponding to the day before. 
+
+        if (time_string in nextDayWofsInits):
+                
+            #Get datetime object corresponding to one day before
+            day_before_dt = wofsInitTimeDT - timedelta(days=1)
+            
+            #Get updated date_string
+            date_string, time_string = ForecastSpecs.dattime_to_str(day_before_dt) 
+
+
+        return date_string
 
 
     @staticmethod
@@ -1796,6 +1847,20 @@ class ForecastSpecs:
             difference = ForecastSpecs.timedelta_to_min(difference)
 
         return difference
+
+    @staticmethod 
+    def dattime_to_str(in_dt):
+        '''Converts incoming datetime object (@in_dt) to 8 character date string
+            and 4-character time string
+            @Returns 8-character date string (YYYYMMDD) and 4-character time 
+                string (HHMM) 
+        '''
+
+        new_date_string = in_dt.strftime("%Y%m%d") 
+        new_time_string = in_dt.strftime("%H%M")
+    
+
+        return new_date_string, new_time_string
 
 
     @staticmethod 
