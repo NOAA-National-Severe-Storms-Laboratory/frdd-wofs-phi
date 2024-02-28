@@ -145,7 +145,7 @@ class MLGenerator:
         #Save predictors to file (if we're training)
         if (c.is_train_mode == True):
         
-            torp_predictors = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs)
+            #torp_predictors = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs)
 
             #Get the filenames used for saving 
             full_npy_fname = MLGenerator.get_full_npy_filename(forecast_specs)
