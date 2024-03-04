@@ -20,14 +20,14 @@ is_train_mode = True
 sample_rate = 0.1 
 
 #Path to full_npy directory for training
-train_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/full_npy"
+train_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/full_npy"
 
 #Path to dat directory for training
-train_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/dat"
+train_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/dat"
 
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
-use_ALL_files = True 
+use_ALL_files = True
 
 
 max_cores = 30 #max number of cores to use for parallelization
