@@ -237,7 +237,7 @@ class MLTrainer:
         train_end_ind = self.num_folds - 3
         val_ind = self.num_folds - 2
         test_ind = self.num_folds - 1
-        for r in c.obs_radii
+        for r in c.obs_radii:
             for k in range(num_folds):
                 self.save_model(k, r)
                 #self.run_on_validation()
@@ -370,7 +370,7 @@ class MLTrainer:
             init_dt = init_dt - datetime.timedelta(days = 1)
         init_date_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[0]
         init_time_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[1]
-        wofs_date_dir = c.wofs_dir + init_date_str + '/' init_time_str + '/'
+        wofs_date_dir = c.wofs_dir + init_date_str + '/' + init_time_str + '/'
         wofs_files = []
         if c.use_ALL_files:
             for i in range((self.forecast_length/c.wofs_update_rate) + 1):
