@@ -28,9 +28,10 @@ train_obs_full_npy_dir = "/work/eric.loken/wofs/paper6/obs/full_npy"
 train_fcst_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/dat"
 train_obs_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/dat"
 
+
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
-use_ALL_files = True 
+use_ALL_files = True
 
 
 max_cores = 30 #max number of cores to use for parallelization

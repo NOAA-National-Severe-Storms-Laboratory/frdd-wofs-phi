@@ -63,8 +63,7 @@ class MLGenerator:
             the prediction window/valid period. 
 
             @ps_files are the list of probSevere files needed in reverse chronological order (i.e.,
-            starting with the most recent file/time step. So we'd have t = 0, -2, -10, -14, -30, -44,
-            -60, -74, -90, -104, -120, -134, -150, -164, -180 minutes
+            starting with the most recent file/time step.). Typically, we go back to 180 minutes ago.
 
             @ps_path is the string path to the probSevere files 
 
@@ -1221,15 +1220,14 @@ class PS:
             Ultimately creates a PS object with a gdf and xarrray of the relevant predictors 
         '''
         
-        #NOTE: Might consider flipping the order of get_past_ps_df and get_ps_gdf 
-        #because it might allow us to only consider the past ps objects that have
-        #the same ID as one of the current objects; might reduce processing time. 
-
-        #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
-        past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files)
-
         #Get PS geodataframe (i.e., for current PS object) 
         ps_gdf = PS.get_ps_gdf(ps_path, ps_files[0])
+
+        #Get a list of unique ids from gdf 
+        curr_ids = PS.get_ids_from_gdf(ps_gdf) 
+
+        #Get a dataframe of all past objects (including their IDs, hazard probabilities, and ages) 
+        past_ps_df = PS.get_past_ps_df(specs, ps_path, ps_files, curr_ids)
 
         #Get Wofs geodataframe
         wofs_gdf = PS.get_wofs_gdf(grid) 
@@ -1301,7 +1299,17 @@ class PS:
                 count += 1
 
         return new_xr
+    
+    @staticmethod
+    def get_ids_from_gdf(in_gdf):
+        '''Returns a list of unique id numbers from the current
+            ProbSevere file given the current ProbSevere
+            geodataframe (@in_gdf)
+        '''
 
+             
+
+        return in_gdf['id'].unique()
 
 
     @staticmethod
@@ -1760,12 +1768,14 @@ class PS:
 
 
     @classmethod
-    def get_past_ps_df(cls, specs, ps_path, ps_files):
+    def get_past_ps_df(cls, specs, ps_path, ps_files, current_ids):
         ''' Returns a dataframe with statistics from past PS files (that will  be relevant
             for our predictors 
             @specs is the ForecastSpecs object for our situation
             @ps_path is the path to the probSevere files
             @ps_files is the list of probSevere files (ordered most recent to oldest)
+            @current_ids is a numpy array of current id numbers from the storms in the 
+                most recent probSevere file. 
 
         '''
 
@@ -1780,10 +1790,14 @@ class PS:
             #Extract the information 
             ps_data = PS.get_ps_data(ps_path, ps_file) 
 
-            if (ps_data != ""): 
+            if (ps_data != ""):  #i.e., if there's at least one storm object
                 #extract historical info
                 #False at the end because this is for past/historical data 
                 curr_df = PS.extract_ps_info(ps_data, age, c.ps_version, False)
+           
+                #Maybe filter out the extraneous data here. 
+                mask = curr_df['id'].isin(current_ids)
+                curr_df = curr_df[mask]
 
                 #Merge dataframe
                 if (len(curr_df) > 0):
@@ -2894,15 +2908,36 @@ def main():
                     "wofs_ALL_15_20210605_0200_0315.nc", "wofs_ALL_16_20210605_0200_0320.nc",\
                     "wofs_ALL_17_20210605_0200_0325.nc"]
 
-    ps_files = ["MRMS_EXP_PROBSEVERE_20210605.022400.json", "MRMS_EXP_PROBSEVERE_20210605.022200.json",\
-                "MRMS_EXP_PROBSEVERE_20210605.021400.json", "MRMS_EXP_PROBSEVERE_20210605.021000.json",\
-                "MRMS_EXP_PROBSEVERE_20210605.015400.json", "MRMS_EXP_PROBSEVERE_20210605.014000.json",\
-                "MRMS_EXP_PROBSEVERE_20210605.012400.json", "MRMS_EXP_PROBSEVERE_20210605.011000.json",\
-                "MRMS_EXP_PROBSEVERE_20210605.005400.json", "MRMS_EXP_PROBSEVERE_20210605.004000.json",\
-                "MRMS_EXP_PROBSEVERE_20210605.002400.json", "MRMS_EXP_PROBSEVERE_20210605.001000.json",\
-                "MRMS_EXP_PROBSEVERE_20210604.235400.json", "MRMS_EXP_PROBSEVERE_20210604.234000.json",\
-                "MRMS_EXP_PROBSEVERE_20210604.232400.json"]
-    
+    #ps_files = ["MRMS_EXP_PROBSEVERE_20210605.022400.json", "MRMS_EXP_PROBSEVERE_20210605.022200.json",\
+    #            "MRMS_EXP_PROBSEVERE_20210605.021400.json", "MRMS_EXP_PROBSEVERE_20210605.021000.json",\
+    #            "MRMS_EXP_PROBSEVERE_20210605.015400.json", "MRMS_EXP_PROBSEVERE_20210605.014000.json",\
+    #            "MRMS_EXP_PROBSEVERE_20210605.012400.json", "MRMS_EXP_PROBSEVERE_20210605.011000.json",\
+    #            "MRMS_EXP_PROBSEVERE_20210605.005400.json", "MRMS_EXP_PROBSEVERE_20210605.004000.json",\
+    #            "MRMS_EXP_PROBSEVERE_20210605.002400.json", "MRMS_EXP_PROBSEVERE_20210605.001000.json",\
+    #            "MRMS_EXP_PROBSEVERE_20210604.235400.json", "MRMS_EXP_PROBSEVERE_20210604.234000.json",\
+    #            "MRMS_EXP_PROBSEVERE_20210604.232400.json"]
+
+    ps_times = ["0224", "0222", "0220", "0218", "0216", "0214", "0212", "0210", "0208", "0206",\
+                "0204", "0202", "0200", "0158", "0156", "0154", "0152", "0150", "0148", "0146",\
+                "0144", "0142", "0140", "0138", "0136", "0134", "0132", "0130", "0128", "0126",\
+                "0124", "0122", "0120", "0118", "0116", "0114", "0112", "0110", "0108", "0106",\
+                "0104", "0102", "0100", "0058", "0056", "0054", "0052", "0050", "0048", "0046",\
+                "0044", "0042", "0040", "0038", "0036", "0034", "0032", "0030", "0028", "0026",\
+                "0024", "0022", "0020", "0018", "0016", "0014", "0012", "0010", "0008", "0006",\
+                "0004", "0002", "0000", "2358", "2356", "2354", "2352", "2350", "2348", "2346",\
+                "2344", "2342", "2340", "2338", "2336", "2334", "2332", "2330", "2328", "2326",\
+                "2324"] 
+
+    ps_times = ["%s00" %p for p in ps_times] 
+
+    ps_dates = ["20210605" for p in ps_times] 
+    for a in range(73, len(ps_times)):
+        ps_dates[a] = "20210604"
+
+
+    ps_files = ["MRMS_EXP_PROBSEVERE_%s.%s.json" %(ps_dates[p], ps_times[p]) for p in range(len(ps_times))]
+   
+ 
     torp_files = ['/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-023037_KUDX_tordetections.csv',
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-023337_KUDX_tordetections.csv',
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-023628_KUDX_tordetections.csv',
