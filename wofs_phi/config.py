@@ -15,15 +15,19 @@ mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
+model_save_dir = '../models'
 
 #Fraction of data to randomly sample for training
 sample_rate = 0.1 
 
 #Path to full_npy directory for training
-train_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/full_npy"
+train_fcst_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/full_npy"
+train_obs_full_npy_dir = "/work/eric.loken/wofs/paper6/obs/full_npy"
 
 #Path to dat directory for training
-train_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/dat"
+train_fcst_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/dat"
+train_obs_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/dat"
+
 
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
@@ -66,6 +70,12 @@ wofs_methods_file = "standard_wofs_methods.txt"
 all_fields_file = "all_fields.txt" #Holds all the predictor fields
 all_methods_file = "all_methods.txt" #Holds all the preprocessing methods
 
+wofs_dir = "/work/mflora/SummaryFiles/"
+ps_dir = "/work/eric.loken/wofs/probSevere/"
+
+ps_search_minutes = 180 #how long before start time do we need to search for ps files to generate predictors
+ps_recent_file_threshold = 10 #need a file in last __ minutes to do training/real time running
+
 #Holds all the variables that just get taken from the point of prediction
 single_pt_file = "single_point_fields.txt" 
 
@@ -73,8 +83,13 @@ single_pt_file = "single_point_fields.txt"
 bottom_hour_inits = ["1730", "1830", "1930", "2030", "2130", "2230", "2330", "0030", "0130",\
                      "0230", "0330", "0430", "0530", "0630", "0730", "0830", "0930", "1030",\
                      "1130", "1230", "1330", "1430", "1530", "1630"]
+top_hour_inits = ["1700", "1800", "1900", "2000", "2100", "2200", "2300", "0000", "0100",\
+                     "0200", "0300", "0400", "0500", "0600", "0700", "0800", "0900", "1000",\
+                     "1100", "1200", "1300", "1400", "1500", "1600"]
 
 next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500"]
+wofs_reset_hour = 12
+wofs_update_rate = 5 #wofs updates every __ minutes, currently 5, don't think that will change, but here just in case
 pkl_dir = "." #Will probably need to update later
 
 wofs_spinup_time = 25
@@ -85,6 +100,8 @@ torp_prob_change_1 = 5
 torp_prob_change_2 = 10
 torp_prob_change_1_str = 'p_change_' + str(torp_prob_change_1) + '_min'
 torp_prob_change_2_str = 'p_change_' + str(torp_prob_change_2) + '_min'
+
+torp_search_minutes = max(torp_prob_change_1, torp_prob_change_2)
 
 torp_max_time_skip = 10
 
