@@ -153,11 +153,8 @@ class MLGenerator:
 
             #Save predictors to appropriate files
             pex.save_predictors(one_d_pred_array, c.sample_rate, fcst_grid, \
-                        c.train_full_npy_dir, full_npy_fname, c.train_dat_dir,\
+                        c.train_fcst_full_npy_dir, full_npy_fname, c.train_fcst_dat_dir,\
                         dat_fname, rand_inds_fname)
-
-        #TODO
-        #Revamp ProbSevere class to accept all files in last 3 hours-- change how I do
 
         
         #TODO: Put in another method 
