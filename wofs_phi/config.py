@@ -31,8 +31,11 @@ train_obs_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/dat"
 
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
-use_ALL_files = True
+use_ALL_files = False
 
+wofs_base_path = "/work/mflora/SummaryFiles" #Obviously, will need to change on cloud 
+
+nc_outdir = "." #Where to place the final netcdf files 
 
 max_cores = 30 #max number of cores to use for parallelization
 
@@ -42,6 +45,9 @@ dx_km = 3.0 #horizontal grid spacing of wofs in km
 ps_thresh = 0.01 #ps objects must have probs greater than or equal to this amount to be considered
 
 max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
+
+#Amount of time (in minutes) to go back (relative to first PS file) 
+ps_time_to_go_back = 180.0 
 
 #radius (in km) for probSevere objects at time 0
 min_radius = 1.5 #in km (for probSevere objects)
@@ -88,8 +94,36 @@ top_hour_inits = ["1700", "1800", "1900", "2000", "2100", "2200", "2300", "0000"
                      "1100", "1200", "1300", "1400", "1500", "1600"]
 
 next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500"]
+
+next_day_times = ["0000", "0005", "0010", "0015", "0020", "0025", "0030",\
+                    "0030", "0035", "0040","0045", "0050", "0055",\
+                    "0100", "0105", "0110", "0115", "0120", "0125", "0130",\
+                    "0130", "0135", "0140","0145", "0150", "0155",\
+                    "0200", "0205", "0210", "0215", "0220", "0225", "0230",\
+                    "0230", "0235", "0240","0245", "0250", "0255",\
+                    "0300", "0305", "0310", "0315", "0320", "0325", "0330",\
+                    "0330", "0335", "0340","0345", "0350", "0355",\
+                    "0400", "0405", "0410", "0415", "0420", "0425", "0430",\
+                    "0430", "0435", "0440","0445", "0450", "0455",\
+                    "0500", "0505", "0510", "0515", "0520", "0525", "0530",\
+                    "0530", "0535", "0540","0545", "0550", "0555",\
+                    "0600", "0605", "0610", "0615", "0620", "0625", "0630",\
+                    "0630", "0635", "0640","0645", "0650", "0655",\
+                    "0700", "0705", "0710", "0715", "0720", "0725", "0730",\
+                    "0730", "0735", "0740","0745", "0750", "0755",\
+                    "0800", "0805", "0810", "0815", "0820", "0825", "0830",\
+                    "0830", "0835", "0840","0845", "0850", "0855",\
+                    "0900", "0905", "0910", "0915", "0920", "0925", "0930",\
+                    "0930", "0935", "0940","0945", "0950", "0955",\
+                    "1000", "1005", "1010", "1015", "1020", "1025", "1030",\
+                    "1030", "1035", "1040","1045", "1050", "1055"]            
+    
+
+
+
 wofs_reset_hour = 12
 wofs_update_rate = 5 #wofs updates every __ minutes, currently 5, don't think that will change, but here just in case
+ps_update_rate = 2 #ProbSevere updates every 2 minutes currently
 pkl_dir = "." #Will probably need to update later
 
 wofs_spinup_time = 25

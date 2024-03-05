@@ -153,11 +153,8 @@ class MLGenerator:
 
             #Save predictors to appropriate files
             pex.save_predictors(one_d_pred_array, c.sample_rate, fcst_grid, \
-                        c.train_full_npy_dir, full_npy_fname, c.train_dat_dir,\
+                        c.train_fcst_full_npy_dir, full_npy_fname, c.train_fcst_dat_dir,\
                         dat_fname, rand_inds_fname)
-
-        #TODO
-        #Revamp ProbSevere class to accept all files in last 3 hours-- change how I do
 
         
         #TODO: Put in another method 
@@ -240,7 +237,7 @@ class MLTrainer:
         train_end_ind = self.num_folds - 3
         val_ind = self.num_folds - 2
         test_ind = self.num_folds - 1
-        for r in c.obs_radii
+        for r in c.obs_radii:
             for k in range(num_folds):
                 self.save_model(k, r)
                 #self.run_on_validation()
@@ -297,7 +294,7 @@ class MLTrainer:
             #predictor files don't exist, we need to generate them
             torp_files = [] #needed for generator, but not training on this... yet
             nc_outdir = '.' #doesn't matter since we're just using the generator to make/save predictor files
-            generator = (wofs_files, ps_files, c.ps_dir, wofs_dir, torp_files, nc_outdir)
+            generator = MLGenerator(wofs_files, ps_files, c.ps_dir, wofs_dir, torp_files, nc_outdir)
             generator.generate()
         return pred_filename, fcst_specs
     
@@ -373,7 +370,7 @@ class MLTrainer:
             init_dt = init_dt - datetime.timedelta(days = 1)
         init_date_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[0]
         init_time_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[1]
-        wofs_date_dir = c.wofs_dir + init_date_str + '/' init_time_str + '/'
+        wofs_date_dir = c.wofs_dir + init_date_str + '/' + init_time_str + '/'
         wofs_files = []
         if c.use_ALL_files:
             for i in range((self.forecast_length/c.wofs_update_rate) + 1):
@@ -950,9 +947,39 @@ class Grid:
     def create_wofs_grid(cls, wofs_path, wofs_file): 
         '''Creates a Grid object from a wofs path and wofs file.'''
 
-        full_wofs_file = "%s/%s" %(wofs_path, wofs_file) 
+        full_wofs_file = "%s/%s" %(wofs_path, wofs_file)
 
-        ds = nc.Dataset(full_wofs_file)
+        #Get legacy file
+        legacy_fnames = WoFS_Agg.get_legacy_filenames("mslp", [wofs_file])
+        legacy_fname = legacy_fnames[0]
+
+        full_legacy_wofs_file = "%s/%s" %(wofs_path, legacy_fname)
+
+        #Add capabilities to account for ALL or legacy file names
+        if (c.use_ALL_files == True):
+            try: 
+                ds = nc.Dataset(full_wofs_file)
+            except FileNotFoundError:
+                try: 
+                    ds = nc.Dataset(full_legacy_wofs_file)
+                except:
+                    print ("Neither %s nor %s found" %(full_wofs_file, full_legacy_wofs_file))
+                    quit()
+
+
+        else: 
+
+            try: 
+                ds = nc.Dataset(full_legacy_wofs_file)
+            except FileNotFoundError:
+                try: 
+                    ds = nc.Dataset(full_wofs_file) 
+                except:
+                    print ("Neither %s nor %s found" \
+                            %(full_legacy_wofs_file, full_wofs_file))
+                    quit() 
+
+
         ny = int(ds.__dict__['ny'])
         nx = int(ds.__dict__['nx'])
 
@@ -1985,7 +2012,11 @@ class ForecastSpecs:
         #Obtain datetime versions of the above (i.e., start_valid, end_valid, wofs_init_time, etc.) 
         start_valid_dt = ForecastSpecs.str_to_dattime(start_valid, start_valid_date) 
         end_valid_dt = ForecastSpecs.str_to_dattime(end_valid, end_valid_date) 
+
         wofs_init_time_dt = ForecastSpecs.str_to_dattime(wofs_init_time, wofs_init_date) 
+
+        
+
 
 
         #Get the date before 00z -- Like our UseDate in previous script iterations
@@ -2184,9 +2215,16 @@ class ForecastSpecs:
     def find_date_time_from_wofs(wofs_file, time_type):
         '''
         Finds/returns the (string) time and date (e.g., start or end of the forecast valid window) associated with the given WoFS file. 
-        # @wofs_file is the string of the wofs file 
-        # @time_type is a string: "forecast" is a forecast time period; "init" is initialization time 
+         @wofs_file is the string of the wofs file 
+         @time_type is a string: "forecast" is a forecast time period; "init" is initialization time 
+
+        NOTE: The date returned will be the date associated with the valid time, 
+        NOT the initialization time. As a result, the date string returned might 
+        differ from the date in the wofs file name. 
         '''
+
+        #Need to check if the time is in next_day_times 
+
 
         #Split the string based on underscores 
         split_str = wofs_file.split("_") 
@@ -2200,6 +2238,14 @@ class ForecastSpecs:
             time = split_str[4]
 
         date = split_str[3] 
+
+        #If the time is in the next_day_times in the config file, then we'll have to 
+        #increment the date 
+        if (time in c.next_day_times):
+            dt = ForecastSpecs.str_to_dattime(time, date)
+            dt += timedelta(days=1) 
+            date, __ = ForecastSpecs.dattime_to_str(dt) 
+        
 
 
         return time, date 
@@ -2894,7 +2940,6 @@ def main():
     #TODO: Put these in and start seeing if I can get something reasonable. 
     wofs_direc = "/work/mflora/SummaryFiles/20210604/0200"
     ps_direc = "/work/eric.loken/wofs/probSevere"
-    nc_outdir = "."
 
 
     #TODO: We'd need to develop some code (maybe in an outside script, etc. to determine these files/filenames
@@ -2963,7 +3008,7 @@ def main():
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033234_KUDX_tordetections.csv',
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033456_KUDX_tordetections.csv']
 
-    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, nc_outdir)
+    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, c.nc_outdir)
 
     #Do the generation 
     ml_obj.generate() 
