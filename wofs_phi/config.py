@@ -31,10 +31,11 @@ train_obs_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/dat"
 
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
-use_ALL_files = True
+use_ALL_files = False
 
 wofs_base_path = "/work/mflora/SummaryFiles" #Obviously, will need to change on cloud 
 
+nc_outdir = "." #Where to place the final netcdf files 
 
 max_cores = 30 #max number of cores to use for parallelization
 
@@ -44,6 +45,9 @@ dx_km = 3.0 #horizontal grid spacing of wofs in km
 ps_thresh = 0.01 #ps objects must have probs greater than or equal to this amount to be considered
 
 max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
+
+#Amount of time (in minutes) to go back (relative to first PS file) 
+ps_time_to_go_back = 180.0 
 
 #radius (in km) for probSevere objects at time 0
 min_radius = 1.5 #in km (for probSevere objects)
@@ -92,6 +96,7 @@ top_hour_inits = ["1700", "1800", "1900", "2000", "2100", "2200", "2300", "0000"
 next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500"]
 wofs_reset_hour = 12
 wofs_update_rate = 5 #wofs updates every __ minutes, currently 5, don't think that will change, but here just in case
+ps_update_rate = 2 #ProbSevere updates every 2 minutes currently
 pkl_dir = "." #Will probably need to update later
 
 wofs_spinup_time = 25

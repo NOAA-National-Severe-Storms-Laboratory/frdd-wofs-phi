@@ -947,9 +947,39 @@ class Grid:
     def create_wofs_grid(cls, wofs_path, wofs_file): 
         '''Creates a Grid object from a wofs path and wofs file.'''
 
-        full_wofs_file = "%s/%s" %(wofs_path, wofs_file) 
+        full_wofs_file = "%s/%s" %(wofs_path, wofs_file)
 
-        ds = nc.Dataset(full_wofs_file)
+        #Get legacy file
+        legacy_fnames = WoFS_Agg.get_legacy_filenames("mslp", [wofs_file])
+        legacy_fname = legacy_fnames[0]
+
+        full_legacy_wofs_file = "%s/%s" %(wofs_path, legacy_fname)
+
+        #Add capabilities to account for ALL or legacy file names
+        if (c.use_ALL_files == True):
+            try: 
+                ds = nc.Dataset(full_wofs_file)
+            except FileNotFoundError:
+                try: 
+                    ds = nc.Dataset(full_legacy_wofs_file)
+                except:
+                    print ("Neither %s nor %s found" %(full_wofs_file, full_legacy_wofs_file))
+                    quit()
+
+
+        else: 
+
+            try: 
+                ds = nc.Dataset(full_legacy_wofs_file)
+            except FileNotFoundError:
+                try: 
+                    ds = nc.Dataset(full_wofs_file) 
+                except:
+                    print ("Neither %s nor %s found" \
+                            %(full_legacy_wofs_file, full_wofs_file))
+                    quit() 
+
+
         ny = int(ds.__dict__['ny'])
         nx = int(ds.__dict__['nx'])
 
@@ -2891,7 +2921,6 @@ def main():
     #TODO: Put these in and start seeing if I can get something reasonable. 
     wofs_direc = "/work/mflora/SummaryFiles/20210604/0200"
     ps_direc = "/work/eric.loken/wofs/probSevere"
-    nc_outdir = "."
 
 
     #TODO: We'd need to develop some code (maybe in an outside script, etc. to determine these files/filenames
@@ -2960,7 +2989,7 @@ def main():
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033234_KUDX_tordetections.csv',
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033456_KUDX_tordetections.csv']
 
-    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, nc_outdir)
+    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, c.nc_outdir)
 
     #Do the generation 
     ml_obj.generate() 

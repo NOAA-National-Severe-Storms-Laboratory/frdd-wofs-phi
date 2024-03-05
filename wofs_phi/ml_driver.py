@@ -13,7 +13,8 @@ class MLDriver:
         i.e., Sets the relevant filenames, etc.
     '''
 
-    def __init__(self, pre00z_date, time_window, wofs_init, wofs_lead_time):
+    def __init__(self, pre00z_date, time_window, wofs_init, wofs_lead_time,\
+                    wofs_path, ps_path, wofs_files, ps_files):
         ''' @pre00z_date is the date for the case before 00z (string format 
                 YYYYMMDD) 
             @time_window is the forecast time window in minutes
@@ -58,20 +59,130 @@ class MLDriver:
         wofs_file_list = MLDriver.find_wofs_file_list(timeWindow, wofsInitTime, wofsLeadTime,\
                                 before00zDate) 
 
-        print (wofs_file_list) 
-
         #Find ps files 
-
+        ps_file_list = MLDriver.find_ps_files_from_first_wofs(wofs_file_list[0])
 
         #Create MLDriver object
+        obj = MLDriver(before00zDate, timeWindow, wofsInitTime, wofsLeadTime, wofsPath,\
+                c.ps_dir, wofs_file_list, ps_file_list) 
 
 
-        #Return MLDriver object 
+        return obj
+
+
+    @staticmethod
+    def find_ps_files_from_first_wofs(first_wofs_file):
+        ''' Finds the set of ProbSevere files given the first wofs
+            file
+        '''
         
+        #First, need to get the datetime object associated with the
+        #first wofs file
+        wofs_time, wofs_date = ForecastSpecs.find_date_time_from_wofs(\
+                first_wofs_file, "forecast") 
 
-        return 
+
+        wofs_dt = ForecastSpecs.str_to_dattime(wofs_time, wofs_date) 
+
+        #Now, find initial probSevere datetime
+        first_ps_dt = MLDriver.find_first_ps_datetime_from_wofs_datetime(wofs_dt)
+
+        #Get the list of probSevere datetime files
+        ps_dt_list = MLDriver.get_ps_datetimes(first_ps_dt) 
+        
+        ps_filenames = MLDriver.get_ps_names_from_dt_list(ps_dt_list) 
+
+
+        return ps_filenames
+
+
+    @staticmethod
+    def get_ps_names_from_dt_list(dt_list):
+        '''Returns a list of probSevere filenames from datetime list'''
+
+        ps_names = [] 
+
+        for l in range(len(dt_list)):
+            dt = dt_list[l] 
+            
+            if (c.ps_version == 2):
+                #get date and time from datetime object
+                date_str, time_str = ForecastSpecs.dattime_to_str(dt)
+                
+                #TODO: Might need to add capability to check for each second
+                #for real-time. Might also not be a problem in real time. 
+                ps_name = "MRMS_EXP_PROBSEVERE_%s.%s00.json" %(date_str, time_str)
+                
+            
+                
+            #TODO: Need to implement capabilities for version 3 
+            elif (c.ps_version == 3):
+
+                pass    
+    
+
+            ps_names.append(ps_name) 
+
+
+
+        return ps_names
+
+    @staticmethod
+    def get_ps_datetimes(first_dt):
+        '''Returns a list of datetime objects corresponding to the
+            set of ProbSevere files we'd like to grab, given the 
+            first datetime object (i.e., datetime object of the 
+            first ProbSevere file)
+        '''
+
+        ps_datetimes = [] 
+        
+        times = np.arange(0,c.ps_time_to_go_back+c.ps_update_rate, c.ps_update_rate)
+        for t in range(len(times)):
+            time = times[t]
+            if (t == 0):
+                #Add first dt object
+                ps_datetimes.append(first_dt)
+            elif (t == 1):
+                dt = first_dt - timedelta(minutes=c.ps_update_rate)
+                ps_datetimes.append(dt) 
+            else:
+                dt -= timedelta(minutes=c.ps_update_rate) 
+                ps_datetimes.append(dt) 
+
+        return ps_datetimes
 
     
+    @staticmethod
+    def find_first_ps_datetime_from_wofs_datetime(dt_wofs):
+        '''Finds the first ProbSevere datetime object based on 
+            the first wofs datetime object -- based on the 
+            principle that ProbSevere files are generated every
+            2 minutes (on the even minutes)
+            @Returns datetime object corresponding to the first
+                ProbSevere time
+        '''
+
+        
+        #See if we're at an even minute. If so, dt_wofs is the 
+        #first probSevere dt. Else, we need to subtract 1 minute
+
+        #Get time string from datetime object
+        __, time_str = ForecastSpecs.dattime_to_str(dt_wofs)
+
+        #Convert to integer
+        time_int = int(time_str) 
+        
+        #Is this integer odd? Subtract 1 minute
+        if (time_int%2 == 1):
+            ps_dt = dt_wofs - timedelta(minutes=1) 
+        else:
+            ps_dt = dt_wofs
+
+
+        return ps_dt
+
+
     @staticmethod
     def find_wofs_path(before_00z_date, wofs_initialization_time):
 
@@ -108,9 +219,6 @@ class MLDriver:
             filename = wofs_file_obj.get_name()
             filenames.append(filename) 
         
-        #Find wofs times (string)
-    
-        #Find wofs dates (string) 
 
         return filenames
 
@@ -248,15 +356,23 @@ class WofsFile:
 def main():
     '''Main method'''
 
-    date = "20190430"
+    date = "20190430" #date before 00z 
     window = 60
-    init_time = "2300"
+    init_time = "0100"
     lead_time = 25
     ps_direc = "/work/eric.loken/wofs/probSevere"
 
+    torpFiles = [] #NOTE: Will probably eventually want to include torp files 
+    #as part of this 
+
     #Create MLDriver object 
-    ml_driver = MLDriver.start_driver(date, window, init_time, lead_time, ps_direc) 
-    
+    mld = MLDriver.start_driver(date, window, init_time, lead_time, ps_direc) 
+
+    #NOTE: Can now use this to drive the forecast 
+    ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
+                mld.wofs_path, torpFiles, c.nc_outdir)
+
+    ml.generate()
     #Get wofs_files 
 
     return 
