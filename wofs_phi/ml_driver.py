@@ -353,26 +353,72 @@ class WofsFile:
 
         return dt_obj
 
+
+def create_training():
+    ''' Creates training files'''
+
+    window = 60 #Focus on 60 minute windows 
+    
+    date_file = "probSevere_dates.txt"
+
+    dates = read_txt(date_file) 
+
+    torpFiles = [] 
+
+    training_init_times = ["1700", "1730", "1800", "1830", "1900",\
+        "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
+        "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
+
+    #These are the most important right now: 
+    #60 and 120 lead times are for forecast mode in SFE;
+    #15 min lead time will be used for warning mode
+    #lead_times = [60, 120, 15, 180] #These are the most important right now
+    lead_times = [60]
+
+    #Get the data
+    for lead_time in lead_times:
+        for date in dates:
+            for init_time in training_init_times:
+                print (date, init_time, lead_time) 
+                mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir)
+
+                #Use this to drive the forecast 
+                ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
+                        mld.wofs_path, torpFiles, c.nc_outdir)
+            
+                ml.generate()
+        
+ 
+    return 
+
+
+def read_txt(txt_file):
+    '''Reads in a given text file to string list'''
+
+    return np.genfromtxt(txt_file, dtype='str') 
+
+
 def main():
     '''Main method'''
 
-    date = "20190430" #date before 00z 
-    window = 60
-    init_time = "0100"
-    lead_time = 25
-    ps_direc = "/work/eric.loken/wofs/probSevere"
+    create_training()
 
-    torpFiles = [] #NOTE: Will probably eventually want to include torp files 
+    #date = "20190430" #date before 00z 
+    #window = 60
+    #init_time = "0100"
+    #lead_time = 25
+
+    #torpFiles = [] #NOTE: Will probably eventually want to include torp files 
     #as part of this 
 
     #Create MLDriver object 
-    mld = MLDriver.start_driver(date, window, init_time, lead_time, ps_direc) 
+    #mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir) 
 
     #NOTE: Can now use this to drive the forecast 
-    ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
-                mld.wofs_path, torpFiles, c.nc_outdir)
+    #ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
+    #            mld.wofs_path, torpFiles, c.nc_outdir)
 
-    ml.generate()
+    #ml.generate()
     #Get wofs_files 
 
     return 
