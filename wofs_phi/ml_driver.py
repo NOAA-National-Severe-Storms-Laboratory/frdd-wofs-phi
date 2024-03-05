@@ -389,7 +389,13 @@ def create_training():
 
                 #Check to make sure wofs files exist; if so we can generate. 
                 proceed = does_wofs_exist(mld.wofs_path, mld.wofs_files[0]) 
-                if (proceed == True):
+
+                already_done = does_full_npy_exist(date, init_time, \
+                                    mld.wofs_files[0], mld.wofs_files[-1], \
+                                    c.train_fcst_full_npy_dir)
+
+                #Note: Can also check to make sure we don't already have a npy file 
+                if (proceed == True and already_done == False):
             
                     ml.generate()
 
@@ -397,6 +403,34 @@ def create_training():
         
  
     return 
+
+
+def does_full_npy_exist(date_before_00z, wofs_initTime, first_wofs_file, last_wofs_file,\
+                            npy_path):
+    '''Checks if we have the full npy training file'''
+    
+    #First, need to compute start and end valid times from first and 
+    #last wofs files 
+    #wofs1d_20190430_1900_v2000-2100.npy
+
+
+    exists = False
+    
+    start_valid, __ = ForecastSpecs.find_date_time_from_wofs(first_wofs_file, "forecast")
+
+    end_valid, __ = ForecastSpecs.find_date_time_from_wofs(last_wofs_file, "forecast") 
+
+    filename = "%s/wofs1d_%s_%s_v%s-%s.npy" %(npy_path, date_before_00z, wofs_initTime, start_valid,\
+                    end_valid)
+    
+    if (os.path.isfile(filename)):
+        exists = True 
+
+
+    return exists
+
+
+
 
 
 def does_wofs_exist(wofs_direc, wofs_ALL_file):
