@@ -4,6 +4,7 @@
 
 from wofs_phi import * 
 import config as c
+import os.path
 
 
 
@@ -385,11 +386,39 @@ def create_training():
                 #Use this to drive the forecast 
                 ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
                         mld.wofs_path, torpFiles, c.nc_outdir)
+
+                #Check to make sure wofs files exist; if so we can generate. 
+                proceed = does_wofs_exist(mld.wofs_path, mld.wofs_files[0]) 
+                if (proceed == True):
             
-                ml.generate()
+                    ml.generate()
+
+                
         
  
     return 
+
+
+def does_wofs_exist(wofs_direc, wofs_ALL_file):
+    '''Method to test if the first wofs file exists.
+        Returns True if so, else Returns False
+        @wofs_direc is the path to the wofs files
+        @wofs_ALL_file is the first wofs file (ALL format)
+    '''
+
+    exists = False #Assume file doesn't exist
+
+    fullFile = "%s/%s" %(wofs_direc, wofs_ALL_file) 
+    legacyNames = WoFS_Agg.get_legacy_filenames("mslp", [wofs_ALL_file]) 
+    legacyName = legacyNames[0]    
+
+    fullLegacyFile = "%s/%s" %(wofs_direc, legacyName)
+    
+    if (os.path.isfile(fullFile) or os.path.isfile(fullLegacyFile)):
+        exists = True
+        
+
+    return exists
 
 
 def read_txt(txt_file):
