@@ -2013,10 +2013,6 @@ class ForecastSpecs:
         start_valid_dt = ForecastSpecs.str_to_dattime(start_valid, start_valid_date) 
         end_valid_dt = ForecastSpecs.str_to_dattime(end_valid, end_valid_date) 
 
-        #Increment by a day if we're after 00z 
-        start_valid_dt = ForecastSpecs.update_dt_after_00z(start_valid_dt) 
-        end_valid_dt = ForecastSpecs.update_dt_after_00z(end_valid_dt) 
-        
         wofs_init_time_dt = ForecastSpecs.str_to_dattime(wofs_init_time, wofs_init_date) 
 
         
@@ -2073,25 +2069,6 @@ class ForecastSpecs:
                             all_fields, all_methods, single_points, date_before_00z) 
 
         return new_specs
-
-
-    @staticmethod
-    def update_dt_after_00z(orig_dt):
-        ''' REturns a datetime object incremented by a day if the time is 
-            in the next_day_init_times given in the config file. Else returns
-            the orig_dt. 
-            @orig_dt is a datetime object 
-        '''
-        use_dt = copy.deepcopy(orig_dt)        
- 
-        #First, obtain the time string
-        __, time_str = ForecastSpecs.dattime_to_str(orig_dt)
-
-        #If this time_str is in the next day inits, then increment the date
-        if (time_str in c.next_day_inits):
-            use_dt += timedelta(days=1)
-
-        return use_dt 
 
 
     @staticmethod 
@@ -2238,9 +2215,16 @@ class ForecastSpecs:
     def find_date_time_from_wofs(wofs_file, time_type):
         '''
         Finds/returns the (string) time and date (e.g., start or end of the forecast valid window) associated with the given WoFS file. 
-        # @wofs_file is the string of the wofs file 
-        # @time_type is a string: "forecast" is a forecast time period; "init" is initialization time 
+         @wofs_file is the string of the wofs file 
+         @time_type is a string: "forecast" is a forecast time period; "init" is initialization time 
+
+        NOTE: The date returned will be the date associated with the valid time, 
+        NOT the initialization time. As a result, the date string returned might 
+        differ from the date in the wofs file name. 
         '''
+
+        #Need to check if the time is in next_day_times 
+
 
         #Split the string based on underscores 
         split_str = wofs_file.split("_") 
@@ -2254,6 +2238,14 @@ class ForecastSpecs:
             time = split_str[4]
 
         date = split_str[3] 
+
+        #If the time is in the next_day_times in the config file, then we'll have to 
+        #increment the date 
+        if (time in c.next_day_times):
+            dt = ForecastSpecs.str_to_dattime(time, date)
+            dt += timedelta(days=1) 
+            date, __ = ForecastSpecs.dattime_to_str(dt) 
+        
 
 
         return time, date 
