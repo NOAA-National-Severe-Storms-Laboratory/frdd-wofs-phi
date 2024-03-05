@@ -294,7 +294,7 @@ class MLTrainer:
             #predictor files don't exist, we need to generate them
             torp_files = [] #needed for generator, but not training on this... yet
             nc_outdir = '.' #doesn't matter since we're just using the generator to make/save predictor files
-            generator = (wofs_files, ps_files, c.ps_dir, wofs_dir, torp_files, nc_outdir)
+            generator = MLGenerator(wofs_files, ps_files, c.ps_dir, wofs_dir, torp_files, nc_outdir)
             generator.generate()
         return pred_filename, fcst_specs
     

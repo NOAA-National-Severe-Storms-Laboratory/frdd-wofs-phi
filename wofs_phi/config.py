@@ -33,6 +33,8 @@ train_obs_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/dat"
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
 use_ALL_files = True
 
+wofs_base_path = "/work/mflora/SummaryFiles" #Obviously, will need to change on cloud 
+
 
 max_cores = 30 #max number of cores to use for parallelization
 
