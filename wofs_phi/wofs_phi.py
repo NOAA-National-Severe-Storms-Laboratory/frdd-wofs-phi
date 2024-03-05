@@ -2012,7 +2012,15 @@ class ForecastSpecs:
         #Obtain datetime versions of the above (i.e., start_valid, end_valid, wofs_init_time, etc.) 
         start_valid_dt = ForecastSpecs.str_to_dattime(start_valid, start_valid_date) 
         end_valid_dt = ForecastSpecs.str_to_dattime(end_valid, end_valid_date) 
+
+        #Increment by a day if we're after 00z 
+        start_valid_dt = ForecastSpecs.update_dt_after_00z(start_valid_dt) 
+        end_valid_dt = ForecastSpecs.update_dt_after_00z(end_valid_dt) 
+        
         wofs_init_time_dt = ForecastSpecs.str_to_dattime(wofs_init_time, wofs_init_date) 
+
+        
+
 
 
         #Get the date before 00z -- Like our UseDate in previous script iterations
@@ -2065,6 +2073,25 @@ class ForecastSpecs:
                             all_fields, all_methods, single_points, date_before_00z) 
 
         return new_specs
+
+
+    @staticmethod
+    def update_dt_after_00z(orig_dt):
+        ''' REturns a datetime object incremented by a day if the time is 
+            in the next_day_init_times given in the config file. Else returns
+            the orig_dt. 
+            @orig_dt is a datetime object 
+        '''
+        use_dt = copy.deepcopy(orig_dt)        
+ 
+        #First, obtain the time string
+        __, time_str = ForecastSpecs.dattime_to_str(orig_dt)
+
+        #If this time_str is in the next day inits, then increment the date
+        if (time_str in c.next_day_inits):
+            use_dt += timedelta(days=1)
+
+        return use_dt 
 
 
     @staticmethod 
