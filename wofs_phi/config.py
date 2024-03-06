@@ -10,8 +10,7 @@
 #Options are: 
 #"forecast" for forecast mode in wofs viewer, 
 #"warning" for warning mode in wofs viewer, and
-#"phi_tool" for forecast mode in PHI Tool. 
-mode = "forecast" 
+mode = "warning" 
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
@@ -126,7 +125,7 @@ wofs_update_rate = 5 #wofs updates every __ minutes, currently 5, don't think th
 ps_update_rate = 2 #ProbSevere updates every 2 minutes currently
 pkl_dir = "." #Will probably need to update later
 
-wofs_spinup_time = 25
+wofs_spinup_time = 25 #in minutes 
 wofs_bottom_init_min = 30
 
 torp_point_buffer = 7.5

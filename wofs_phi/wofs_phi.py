@@ -2008,9 +2008,6 @@ class ForecastSpecs:
         start_valid, start_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[0], "forecast")
         end_valid, end_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[-1], "forecast") 
         wofs_init_time, wofs_init_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[0], "init") 
-        print (start_valid, start_valid_date) 
-        print (end_valid, end_valid_date) 
-        print (wofs_init_time, wofs_init_date)
 
         #Obtain datetime versions of the above (i.e., start_valid, end_valid, wofs_init_time, etc.) 
         start_valid_dt = ForecastSpecs.str_to_dattime(start_valid, start_valid_date) 
@@ -2025,9 +2022,6 @@ class ForecastSpecs:
         #TODO: Yes, I think there's a bug in this now. 
         #Get the date before 00z -- Like our UseDate in previous script iterations
         date_before_00z = ForecastSpecs.get_date_before_00z(wofs_init_time_dt, c.next_day_inits)
-
-        print (date_before_00z)
-        quit()
 
         #Find the length of the forecast time window based on the start_valid_dt and end_valid_dt
         #datetime objects 
