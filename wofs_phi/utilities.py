@@ -14,28 +14,6 @@ import datetime
 import math
 from scipy.ndimage import maximum_filter, minimum_filter
 
-def copy_torp(write_dir,usr, pwd):
-    ssh_client=paramiko.SSHClient()
-    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh_client.connect(hostname='myrorss2',username=usr,password=pwd)
-    sftp = ssh_client.open_sftp()
-
-    for date in sftp.listdir('/work/thea.sandmael/radar'):
-        sftp.chdir('/work/thea.sandmael/radar/' + date)
-        for site in sftp.listdir('/work/thea.sandmael/radar/' + date):
-            csv_dir = '/work/thea.sandmael/radar/' + date + '/' + site + '/netcdf/torp/TORPcsv/00.50/'
-            try:
-                sftp.chdir(csv_dir)
-            except:
-                continue
-
-            for file in sftp.listdir():
-                if os.path.exists(write_dir + date + '/'):
-                    sftp.get(csv_dir + file, write_dir + date + '/' + file)
-                else:
-                    os.mkdir(write_dir + date + '/')
-                    sftp.get(csv_dir + file, write_dir + date + '/' + file)
-
 def geodesic_point_buffer(lon, lat, km):
     proj_crs = ProjectedCRS(conversion = AzimuthalEquidistantConversion(lat, lon))
     proj_wgs84 = pyproj.Proj('EPSG:4326')
@@ -190,3 +168,9 @@ def add_convolutions(var_method, var, footprint):
         conv = np.where(conv_low==999999.9, -1, conv_low)
  
     return conv
+
+def make_dt_from_str(date_str, time_str):
+    '''returns datetime object from YYYYMMDD string and HHMM string'''
+    dt_str = date_str + '-' + time_str
+    dt = datetime(dt_str, '%Y%m%d-%H%M')
+    return dt
