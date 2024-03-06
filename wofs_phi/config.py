@@ -15,7 +15,9 @@ mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
-model_save_dir = '../models'
+model_save_dir = '/work/ryan.martz/wofs_phi_data/models/wofs_psv2_no_torp'
+validation_dir = '/work/ryan.martz/wofs_phi_data/validation_fcsts/wofs_psv2_no_torp'
+test_dir = '/work/ryan.martz/wofs_phi_data/test_fcsts/wofs_psv2_no_torp'
 
 #Fraction of data to randomly sample for training
 sample_rate = 0.1 
