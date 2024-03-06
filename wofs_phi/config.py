@@ -10,7 +10,8 @@
 #Options are: 
 #"forecast" for forecast mode in wofs viewer, 
 #"warning" for warning mode in wofs viewer, and
-mode = "warning" 
+#mode = "warning" 
+mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True

@@ -140,7 +140,7 @@ class MLGenerator:
         #Extract 1d predictors  
         one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
                             forecast_specs, fcst_grid)
-        
+
         #Save predictors to file (if we're training)
         if (c.is_train_mode == True):
         
@@ -177,8 +177,8 @@ class MLGenerator:
             given a ForecastSpecs object (@fSpecs) 
         '''
 
-        use_fname = "wofs1d_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
-                        fSpecs.start_valid, fSpecs.end_valid) 
+        use_fname = "wofs1d_%s_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid) 
 
         return use_fname
 
@@ -189,8 +189,8 @@ class MLGenerator:
             array of predictors) given a ForecastSpecs object (@fSpecs) 
         '''
        
-        use_fname = "wofs1d_%s_%s_v%s-%s.dat" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
-                        fSpecs.start_valid, fSpecs.end_valid)
+        use_fname = "wofs1d_%s_%s_%s_v%s-%s.dat" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
 
  
         return use_fname
@@ -199,8 +199,8 @@ class MLGenerator:
     @staticmethod 
     def get_rand_inds_filename(fSpecs):
         
-        use_fname = "rand_inds_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
-                        fSpecs.start_valid, fSpecs.end_valid)
+        use_fname = "rand_inds_%s_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
 
         return use_fname
 

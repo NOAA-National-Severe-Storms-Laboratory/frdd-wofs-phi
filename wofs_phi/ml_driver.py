@@ -407,10 +407,6 @@ def create_training():
                 print (date, init_time, lead_time) 
                 mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir)
 
-                print (mld.wofs_files)
-                print (mld.ps_files) 
-                quit() 
-
                 #Use this to drive the forecast 
                 ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
                         mld.wofs_path, torpFiles, c.nc_outdir)
@@ -423,8 +419,8 @@ def create_training():
                                     c.train_fcst_full_npy_dir)
 
                 #Note: Can also check to make sure we don't already have a npy file 
-                #if (proceed == True and already_done == False):
-                if (proceed == True):
+                if (proceed == True and already_done == False):
+                #if (proceed == True):
             
                     ml.generate()
 
