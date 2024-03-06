@@ -366,11 +366,11 @@ def create_training():
 
     torpFiles = [] 
 
-    #training_init_times = ["1700", "1730", "1800", "1830", "1900",\
-    #    "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
-    #    "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
+    training_init_times = ["1700", "1730", "1800", "1830", "1900",\
+        "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
+        "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
 
-    training_init_times = ["2300"]
+    #training_init_times = ["2300"]
     #These are the most important right now: 
     #60 and 120 lead times are for forecast mode in SFE;
     #15 min lead time will be used for warning mode
@@ -396,9 +396,9 @@ def create_training():
                                     c.train_fcst_full_npy_dir)
 
                 #Note: Can also check to make sure we don't already have a npy file 
-                if (proceed == True and already_done == False):
+                #if (proceed == True and already_done == False):
             
-                    ml.generate()
+                ml.generate()
 
                 
         
