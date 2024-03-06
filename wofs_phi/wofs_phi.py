@@ -2008,6 +2008,9 @@ class ForecastSpecs:
         start_valid, start_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[0], "forecast")
         end_valid, end_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[-1], "forecast") 
         wofs_init_time, wofs_init_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[0], "init") 
+        print (start_valid, start_valid_date) 
+        print (end_valid, end_valid_date) 
+        print (wofs_init_time, wofs_init_date)
 
         #Obtain datetime versions of the above (i.e., start_valid, end_valid, wofs_init_time, etc.) 
         start_valid_dt = ForecastSpecs.str_to_dattime(start_valid, start_valid_date) 
@@ -2019,8 +2022,12 @@ class ForecastSpecs:
 
 
 
+        #TODO: Yes, I think there's a bug in this now. 
         #Get the date before 00z -- Like our UseDate in previous script iterations
         date_before_00z = ForecastSpecs.get_date_before_00z(wofs_init_time_dt, c.next_day_inits)
+
+        print (date_before_00z)
+        quit()
 
         #Find the length of the forecast time window based on the start_valid_dt and end_valid_dt
         #datetime objects 
@@ -2212,11 +2219,13 @@ class ForecastSpecs:
         return dt_obj
 
     @staticmethod
-    def find_date_time_from_wofs(wofs_file, time_type):
+    def find_date_time_from_wofs(wofs_file, fcst_type):
         '''
         Finds/returns the (string) time and date (e.g., start or end of the forecast valid window) associated with the given WoFS file. 
-         @wofs_file is the string of the wofs file 
-         @time_type is a string: "forecast" is a forecast time period; "init" is initialization time 
+        @wofs_file is the string of the wofs file 
+        @fcst_type is a string telling what type of forecast this is (i.e., which time
+            to return): "forecast" means it will return the valid time; "init" means 
+            return the initialization time 
 
         NOTE: The date returned will be the date associated with the valid time, 
         NOT the initialization time. As a result, the date string returned might 
@@ -2228,23 +2237,31 @@ class ForecastSpecs:
 
         #Split the string based on underscores 
         split_str = wofs_file.split("_") 
-        if (time_type == "forecast"):
-            time = split_str[5] #In this case, it'll be the 5th element of the wofs file string
+        
+        #Find initialization time
+        initTime = split_str[4] 
 
-            #Have to remove the .nc
-            time = time.split(".")[0]
+        validTime = split_str[5] #In this case, it'll be the 5th element of the wofs file string
 
-        elif (time_type == "init"):
-            time = split_str[4]
+        #Have to remove the .nc
+        validTime = validTime.split(".")[0]
 
-        date = split_str[3] 
 
-        #If the time is in the next_day_times in the config file, then we'll have to 
-        #increment the date 
-        if (time in c.next_day_times):
-            dt = ForecastSpecs.str_to_dattime(time, date)
+        date = split_str[3] #date listed in wofs file 
+
+        #Increment the date listed if the init time is in the previous day but the
+        #valid time is in the next day -- but only if we're concerned with returning
+        #the forecast date/time and not the initialization date/time 
+        if ((fcst_type=="forecast") and (validTime in c.next_day_times)\
+                 and (initTime not in c.next_day_inits)):
+            dt = ForecastSpecs.str_to_dattime(validTime, date)
             dt += timedelta(days=1) 
             date, __ = ForecastSpecs.dattime_to_str(dt) 
+
+        if (fcst_type == "forecast"):
+            time = validTime
+        elif (fcst_type == "init"):
+            time = initTime
         
 
 
