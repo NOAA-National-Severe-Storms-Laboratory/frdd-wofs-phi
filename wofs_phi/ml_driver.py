@@ -500,6 +500,7 @@ class WofsFile:
         return dt_obj
 
 
+#For forecast mode 
 def create_training():
     ''' Creates training files'''
 
@@ -511,6 +512,8 @@ def create_training():
 
     torpFiles = [] 
 
+    report_radius = 39
+
     training_init_times = ["1700", "1730", "1800", "1830", "1900",\
         "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
         "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
@@ -520,6 +523,8 @@ def create_training():
     #60 and 120 lead times are for forecast mode in SFE;
     #15 min lead time will be used for warning mode
     #lead_times = [60, 120, 15, 180] #These are the most important right now
+    #Eventually, we'll need to generate lead times of...
+        #30, 60, 90, 120, 150, 180
     lead_times = [60]
 
     #Get the data
@@ -543,13 +548,25 @@ def create_training():
                                     mld.wofs_files[0], mld.wofs_files[-1], \
                                     c.train_fcst_full_npy_dir)
 
+
+                already_done_reps = does_reps_file_exist(date, mld.wofs_files[0], \
+                                mld.wofs_files[-1], c.train_obs_full_npy_dir, \
+                                report_radius)
+
                 #Note: Can also check to make sure we don't already have a npy file 
                 if (proceed_wofs == True and proceed_ps == True and already_done == False):
-                #if (proceed == True):
-            
+
                     ml.generate()
 
-                
+
+                if (proceed_wofs == True and proceed_ps == True and \
+                    already_done_reps == False):
+
+                    #Create a report object and generate/save the 
+                    #reports grid 
+                        pass
+
+
         
  
     return 
@@ -565,33 +582,13 @@ def create_warning_mode_training():
     date_file = "probSevere_dates.txt"
     dates = read_txt(date_file)
     torpFiles = []
+    report_radius = 39 #in km 
 
-    #start_times = \
-    #    ["1725", "1730", "1735", "1740", "1745", "1750", "1755",\
-    #     "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855",\
-    #     "1900", "1905", "1910", "1915", "1920", "1925",\
-    #     "1930", "1935", "1940", "1945", "1950", "1955",\
-    #     "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855",\
-    #    "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855",\
-    #    "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855",\
-    #    "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855",\
-    #    "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855",\
-    #    "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855",\
-    #    "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855",\
-    #    "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855",\
-    #    "1800", "1805", "1810", "1815", "1820", "1825",\
-    #     "1830", "1835", "1840", "1845", "1850", "1855"]
 
-    start_times = ["2000"] 
+    start_times = ["1735", "1805", "1835", "1905", "1935", "2005", "2035", "2105",\
+                    "2135", "2205", "2235", "2305", "2335", "0005", "0035", "0105",\
+                    "0135", "0205", "0235"]
+
     #Maybe for training in warning mode I'll pick a time at the top
     #of the hour, or something 
 
@@ -614,6 +611,9 @@ def create_warning_mode_training():
 
             print (date, start_time, init_time, lead_time) 
 
+            #find start and end valid times 
+            
+
             #Now, start MLDriver object 
             mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir)
     
@@ -630,11 +630,22 @@ def create_warning_mode_training():
                                     mld.wofs_files[0], mld.wofs_files[-1], \
                                     c.train_fcst_full_npy_dir)
 
+            already_done_reps = does_reps_file_exist(date, mld.wofs_files[0], \
+                                mld.wofs_files[-1], c.train_obs_full_npy_dir, \
+                                report_radius)
+
             #Note: Can also check to make sure we don't already have a npy file 
             if (proceed_wofs == True and proceed_ps == True and already_done == False):
 
                 ml.generate()
             
+
+            if (proceed_wofs == True and proceed_ps == True and \
+                    already_done_reps == False):
+            
+                #Create a report object and generate/save the 
+                #reports grid 
+                pass
 
     return 
 
@@ -665,8 +676,27 @@ def does_full_npy_exist(date_before_00z, wofs_initTime, ps_initTime,\
     return exists
 
 
+def does_reps_file_exist(date_before_00z, first_wofs_file, last_wofs_file, npy_path, \
+                         radius):
+    '''Checks if we have the full npy reps file'''
 
+    exists = False
+    
+    start_valid, __ = ForecastSpecs.find_date_time_from_wofs(first_wofs_file, "forecast")
 
+    end_valid, __ = ForecastSpecs.find_date_time_from_wofs(last_wofs_file, "forecast")
+    
+    filenames = ["%s/%s_reps2d_%s_v%s-%s_r%skm.npy" %(npy_path, h,\
+                    date_before_00z, start_valid, end_valid, str(radius)) \
+                    for h in c.final_hazards]
+
+    exist_arr = [os.path.isfile(f) for f in filenames]
+    
+    if (sum(exist_arr) == len(c.final_hazards)):
+
+        exists = True 
+
+    return exists 
 
 def does_wofs_exist(wofs_direc, wofs_ALL_file):
     '''Method to test if the first wofs file exists.

@@ -288,7 +288,8 @@ class ReportGenerator:
     def generate(cls, fcst_specs):
         '''Factory method for creating a report object
             @fcst_specs is a ForecastSpecs object for the current 
-                situation. '''
+                situation. 
+        '''
 
 
 
