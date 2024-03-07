@@ -18,6 +18,11 @@ mode = "forecast"
 is_train_mode = True
 model_save_dir = '../models'
 
+#May or may not eventually use these
+generate_forecasts = False
+
+generate_reports = True 
+
 #Fraction of data to randomly sample for training
 sample_rate = 0.1 
 

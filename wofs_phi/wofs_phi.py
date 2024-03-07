@@ -224,6 +224,81 @@ class MLGenerator:
 
         return use_fname
 
+class ReportGenerator:
+    '''This class handles generating the report grid'''
+
+    def __init__(self, date_before_00z, date, rep_start_dt, rep_end_dt, rep_start, rep_end,\
+                    buffer_minutes, start_valid_dt, end_valid_dt, start_valid, end_valid,\
+                    report_coords_df, report_gdf, report_grid, hazard, radius, target):
+        '''@date_before_00z is the 8-character string (YYYYMMDD) before 00z
+            @date is the 8-character string (YYYYMMDD) of actual date 
+                i.e., that increments after 00z 
+            @rep_start_dt is a datetime object corresponding to the start of 
+                the period we care about for reports i.e., 
+                start of the valid period - buffer time 
+            @rep_end_dt is a datetime object corresponding to the end of the 
+                period we care about for reports. i.e., 
+                end of the valid period + buffer time 
+            @rep_start is the 4-character string (HHMM) corresponding to the start of 
+                the period we care about for reports (including buffer)
+            @rep_end is the 4-character string (HHMM) corresponding to the end of 
+                the period we care about for reports (including buffer) 
+            @buffer_minutes is the period of time to add on either side of the valid
+                period in minutes (e.g., 10 means add +/- 10 minutes to the valid period)
+            @start_valid_dt is the datetime object corresponding to the start
+                of the forecast valid period (no buffer)
+            @end_valid_dt is the datetime object corresponding to the end of the 
+                forecast valid period (no buffer) 
+            @start_valid is the 4-character string (HHMM) corresponding to the 
+                start of the valid period (no buffer)
+            @end_valid is the 4-character string (HHMM) corresponding to the end
+                of the valid period (no buffer) 
+            @report_coords_df is a dataframe of reports with columns ['time', 'lon', 'lat']
+            @report_gdf is a geodataframe of report examples (locations are Points (or 
+                Polygons for warnings)) 
+            @report_grid is a 2-d grid of binary reports 
+            @hazard is a string corresponding to the hazard investigated (e.g., 
+                "hail", "wind", or "tornado") 
+            @radius is the spatial radius to apply (e.g., 7.5, 15, 30, 39km) 
+            @target is a string telling what we're using as our target:
+                "lsrs" for local storm reports or "warnings" for warnings
+        '''
+
+        self.date_before_00z = date_before_00z
+        self.date = date
+        self.rep_start_dt = rep_start_dt
+        self.rep_end_dt = rep_end_dt
+        self.rep_start = rep_start
+        self.rep_end = rep_end
+        self.buffer_minutes = buffer_minutes
+        self.start_valid_dt = start_valid_dt 
+        self.end_valid_dt = end_valid_dt 
+        self.start_valid = start_valid
+        self.end_valid = end_valid
+        self.report_coords_df = report_coords_df
+        self.report_gdf = report_gdf
+        self.report_grid = report_grid
+        self.hazard = hazard 
+        self.radius = radius
+        self.target = target
+
+        return 
+
+    @classmethod
+    def generate(cls, fcst_specs):
+        '''Factory method for creating a report object
+            @fcst_specs is a ForecastSpecs object for the current 
+                situation. '''
+
+
+
+
+
+        return 
+
+
+
+
 class MLTrainer:
     '''This class handles the training of the model'''
     
