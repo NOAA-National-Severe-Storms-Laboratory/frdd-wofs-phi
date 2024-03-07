@@ -662,8 +662,17 @@ class WoFS_Agg:
             #Set the object's temporal aggregation
             wofs_agg_obj.set_temporal_aggregation()
 
+
+            df = pd.DataFrame(wofs_agg_obj.agg_grid)
+            
+            print (wofs_agg_obj.ml_var_name)
+            nan_rows = df.isna().any(axis=1)
+            print (sum(nan_rows))
+            
             #Add wofs_agg_obj to list 
             agg_files.append(wofs_agg_obj) 
+
+        quit() 
 
         return agg_files
 
@@ -732,9 +741,10 @@ class WoFS_Agg:
                 time_agg = np.amin(probability_array, axis=0)
 
 
-        #Get rid of nans and inf values 
-        np.nan_to_num(time_agg, copy=False, nan=c.nan_replace_value,\
-                posinf=c.nan_replace_value, neginf=c.nan_replace_value)
+        #Get rid of nans and inf values -- NOTE: Moved this to where we 
+        #first read in the WoFS data. 
+        #np.nan_to_num(time_agg, copy=False, nan=c.nan_replace_value,\
+        #        posinf=c.nan_replace_value, neginf=c.nan_replace_value)
 
         #Convert to float32 
         time_agg = np.float32(time_agg)
@@ -791,6 +801,10 @@ class WoFS_Agg:
 
             #Extract relevant variable 
             var_data = data[self.wofs_var_name][:]
+
+            #Get rid of nans and inf values
+            np.nan_to_num(var_data, copy=False, nan=c.nan_replace_value,\
+                posinf=c.nan_replace_value, neginf=c.nan_replace_value)
             
             #Append to list 
             var_data_list.append(var_data) 
