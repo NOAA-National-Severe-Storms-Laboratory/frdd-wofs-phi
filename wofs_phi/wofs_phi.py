@@ -137,6 +137,10 @@ class MLGenerator:
                                 forecast_specs.singlePtFields, c.predictor_radii_km, \
                                 c.extra_predictor_names)
 
+       
+        #Save predictor names to file -- if desired 
+        #MLGenerator.save_predictor_names(predictor_list)
+
         #Extract 1d predictors  
         one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
                             forecast_specs, fcst_grid)
@@ -170,6 +174,22 @@ class MLGenerator:
 
 
         return
+
+
+    @staticmethod
+    def save_predictor_names(pred_list):
+        '''Saves predictor names to text file
+            @pred_list is list of predictor names.'''
+
+        with open("rf_variables.txt", 'w') as f:
+            for name in pred_list: 
+
+                f.write("%s\n" %name)
+
+        f.close() 
+
+
+        return 
 
     @staticmethod 
     def get_full_npy_filename(fSpecs):
