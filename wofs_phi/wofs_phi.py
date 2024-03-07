@@ -663,16 +663,9 @@ class WoFS_Agg:
             wofs_agg_obj.set_temporal_aggregation()
 
 
-            df = pd.DataFrame(wofs_agg_obj.agg_grid)
-            
-            print (wofs_agg_obj.ml_var_name)
-            nan_rows = df.isna().any(axis=1)
-            print (sum(nan_rows))
-            
             #Add wofs_agg_obj to list 
             agg_files.append(wofs_agg_obj) 
 
-        quit() 
 
         return agg_files
 
