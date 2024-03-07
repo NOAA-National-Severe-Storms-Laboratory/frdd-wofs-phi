@@ -538,7 +538,6 @@ def create_training():
 
 
                 proceed_ps = does_ps_exist(mld.ps_path, mld.ps_files[0])
-                #TODO: Need to check if the current PS file exists as well 
 
                 already_done = does_full_npy_exist(date, init_time, mld.ps_init,\
                                     mld.wofs_files[0], mld.wofs_files[-1], \
@@ -605,6 +604,10 @@ def create_warning_mode_training():
             #Create datetime object 
             dt = ForecastSpecs.str_to_dattime(start_time, date) 
 
+            #Need to increment this if start time is in the next day times
+            if (start_time in c.next_day_times):
+                dt += timedelta(days=1) 
+
             #Get the necessary info to start the driver 
             init_time, lead_time = MLDriver.get_info_for_warning_mode(\
                     dt, date) 
@@ -622,8 +625,6 @@ def create_warning_mode_training():
             proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0])
 
             proceed_ps = does_ps_exist(mld.ps_path, mld.ps_files[0]) 
-
-            #TODO: Need to check if the current PS file exists as well 
 
             already_done = does_full_npy_exist(date, init_time, mld.ps_init,\
                                     mld.wofs_files[0], mld.wofs_files[-1], \
