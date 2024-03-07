@@ -137,10 +137,14 @@ class MLGenerator:
                                 forecast_specs.singlePtFields, c.predictor_radii_km, \
                                 c.extra_predictor_names)
 
+       
+        #Save predictor names to file -- if desired 
+        #MLGenerator.save_predictor_names(predictor_list)
+
         #Extract 1d predictors  
         one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
                             forecast_specs, fcst_grid)
-        
+
         #Save predictors to file (if we're training)
         if (c.is_train_mode == True):
         
@@ -171,14 +175,30 @@ class MLGenerator:
 
         return
 
+
+    @staticmethod
+    def save_predictor_names(pred_list):
+        '''Saves predictor names to text file
+            @pred_list is list of predictor names.'''
+
+        with open("rf_variables.txt", 'w') as f:
+            for name in pred_list: 
+
+                f.write("%s\n" %name)
+
+        f.close() 
+
+
+        return 
+
     @staticmethod 
     def get_full_npy_filename(fSpecs):
         '''Sets and returns the filename for the full_npy file (holding the full array of predictors)
             given a ForecastSpecs object (@fSpecs) 
         '''
 
-        use_fname = "wofs1d_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
-                        fSpecs.start_valid, fSpecs.end_valid) 
+        use_fname = "wofs1d_%s_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid) 
 
         return use_fname
 
@@ -189,8 +209,8 @@ class MLGenerator:
             array of predictors) given a ForecastSpecs object (@fSpecs) 
         '''
        
-        use_fname = "wofs1d_%s_%s_v%s-%s.dat" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
-                        fSpecs.start_valid, fSpecs.end_valid)
+        use_fname = "wofs1d_%s_%s_%s_v%s-%s.dat" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
 
  
         return use_fname
@@ -199,8 +219,8 @@ class MLGenerator:
     @staticmethod 
     def get_rand_inds_filename(fSpecs):
         
-        use_fname = "rand_inds_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
-                        fSpecs.start_valid, fSpecs.end_valid)
+        use_fname = "rand_inds_%s_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                        fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
 
         return use_fname
 
@@ -636,16 +656,15 @@ class WoFS_Agg:
                                 threshold_value, legacyFilenames)
 
 
-    
             #Set the object's grid time list 
             wofs_agg_obj.set_grid_time_list() 
 
             #Set the object's temporal aggregation
             wofs_agg_obj.set_temporal_aggregation()
 
+
             #Add wofs_agg_obj to list 
             agg_files.append(wofs_agg_obj) 
-
 
 
         return agg_files
@@ -715,6 +734,11 @@ class WoFS_Agg:
                 time_agg = np.amin(probability_array, axis=0)
 
 
+        #Get rid of nans and inf values -- NOTE: Moved this to where we 
+        #first read in the WoFS data. 
+        #np.nan_to_num(time_agg, copy=False, nan=c.nan_replace_value,\
+        #        posinf=c.nan_replace_value, neginf=c.nan_replace_value)
+
         #Convert to float32 
         time_agg = np.float32(time_agg)
 
@@ -770,6 +794,10 @@ class WoFS_Agg:
 
             #Extract relevant variable 
             var_data = data[self.wofs_var_name][:]
+
+            #Get rid of nans and inf values
+            np.nan_to_num(var_data, copy=False, nan=c.nan_replace_value,\
+                posinf=c.nan_replace_value, neginf=c.nan_replace_value)
             
             #Append to list 
             var_data_list.append(var_data) 
@@ -2008,9 +2036,6 @@ class ForecastSpecs:
         start_valid, start_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[0], "forecast")
         end_valid, end_valid_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[-1], "forecast") 
         wofs_init_time, wofs_init_date = ForecastSpecs.find_date_time_from_wofs(wofs_files[0], "init") 
-        print (start_valid, start_valid_date) 
-        print (end_valid, end_valid_date) 
-        print (wofs_init_time, wofs_init_date)
 
         #Obtain datetime versions of the above (i.e., start_valid, end_valid, wofs_init_time, etc.) 
         start_valid_dt = ForecastSpecs.str_to_dattime(start_valid, start_valid_date) 
@@ -2025,9 +2050,6 @@ class ForecastSpecs:
         #TODO: Yes, I think there's a bug in this now. 
         #Get the date before 00z -- Like our UseDate in previous script iterations
         date_before_00z = ForecastSpecs.get_date_before_00z(wofs_init_time_dt, c.next_day_inits)
-
-        print (date_before_00z)
-        quit()
 
         #Find the length of the forecast time window based on the start_valid_dt and end_valid_dt
         #datetime objects 

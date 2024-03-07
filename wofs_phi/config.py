@@ -10,8 +10,8 @@
 #Options are: 
 #"forecast" for forecast mode in wofs viewer, 
 #"warning" for warning mode in wofs viewer, and
-#"phi_tool" for forecast mode in PHI Tool. 
-mode = "forecast" 
+#mode = "warning" 
+mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
@@ -50,6 +50,10 @@ max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for se
 
 #Amount of time (in minutes) to go back (relative to first PS file) 
 ps_time_to_go_back = 180.0 
+
+nan_replace_value = 0.0 #Replace nans in wofs files with this value 
+#NOTE: We were getting nans primarily in mid-level lapse rate, 0-6km shear components, 
+#STP, SCP, and freezing level
 
 #radius (in km) for probSevere objects at time 0
 min_radius = 1.5 #in km (for probSevere objects)
@@ -128,7 +132,7 @@ wofs_update_rate = 5 #wofs updates every __ minutes, currently 5, don't think th
 ps_update_rate = 2 #ProbSevere updates every 2 minutes currently
 pkl_dir = "." #Will probably need to update later
 
-wofs_spinup_time = 25
+wofs_spinup_time = 25 #in minutes 
 wofs_bottom_init_min = 30
 
 torp_point_buffer = 7.5
