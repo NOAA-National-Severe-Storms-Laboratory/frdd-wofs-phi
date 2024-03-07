@@ -1930,11 +1930,11 @@ class PS:
             data = json.load(f)   
         
         except FileNotFoundError:
-            print ("%s not found. Adding as if it had no information" %json_file)
+            print ("%s not found. Adding as if it had no information" %full_fname)
             data = ""
 
         except json.decoder.JSONDecodeError:
-            print ("%s Extra data in file. Proceeding as if it had no information." %json_file)
+            print ("%s Extra data in file. Proceeding as if it had no information." %full_fname)
             data = ""
 
         return data
