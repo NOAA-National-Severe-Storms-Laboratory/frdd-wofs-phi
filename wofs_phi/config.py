@@ -49,6 +49,10 @@ max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for se
 #Amount of time (in minutes) to go back (relative to first PS file) 
 ps_time_to_go_back = 180.0 
 
+nan_replace_value = 0.0 #Replace nans in wofs files with this value 
+#NOTE: We were getting nans primarily in mid-level lapse rate, 0-6km shear components, 
+#STP, SCP, and freezing level
+
 #radius (in km) for probSevere objects at time 0
 min_radius = 1.5 #in km (for probSevere objects)
 

@@ -656,7 +656,6 @@ class WoFS_Agg:
                                 threshold_value, legacyFilenames)
 
 
-    
             #Set the object's grid time list 
             wofs_agg_obj.set_grid_time_list() 
 
@@ -665,8 +664,6 @@ class WoFS_Agg:
 
             #Add wofs_agg_obj to list 
             agg_files.append(wofs_agg_obj) 
-
-
 
         return agg_files
 
@@ -734,6 +731,10 @@ class WoFS_Agg:
             elif (self.method == "min"):
                 time_agg = np.amin(probability_array, axis=0)
 
+
+        #Get rid of nans and inf values 
+        np.nan_to_num(time_agg, copy=False, nan=c.nan_replace_value,\
+                posinf=c.nan_replace_value, neginf=c.nan_replace_value)
 
         #Convert to float32 
         time_agg = np.float32(time_agg)
