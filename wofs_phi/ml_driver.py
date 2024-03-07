@@ -16,7 +16,7 @@ class MLDriver:
     '''
 
     def __init__(self, pre00z_date, time_window, wofs_init, wofs_lead_time,\
-                    wofs_path, ps_path, wofs_files, ps_files):
+                    wofs_path, ps_path, wofs_files, ps_files, ps_init):
         ''' @pre00z_date is the date for the case before 00z (string format 
                 YYYYMMDD) 
             @time_window is the forecast time window in minutes
@@ -31,6 +31,7 @@ class MLDriver:
                 valid period 
             @ps_files is the list of probSevere files (starting with the most 
                 recent and going back 3 hours in time)
+            @ps_init is the ProbSevere intiailization time 
         '''
 
         self.pre00z_date = pre00z_date
@@ -41,6 +42,7 @@ class MLDriver:
         self.ps_path = ps_path
         self.wofs_files = wofs_files
         self.ps_files = ps_files 
+        self.ps_init = ps_init
 
         return 
 
@@ -64,9 +66,12 @@ class MLDriver:
         #Find ps files 
         ps_file_list = MLDriver.find_ps_files_from_first_wofs(wofs_file_list[0])
 
+        #Find the ps init time 
+        ps_iTime, __ = ForecastSpecs.find_ps_date_time(ps_file_list[0], c.ps_version) 
+
         #Create MLDriver object
         obj = MLDriver(before00zDate, timeWindow, wofsInitTime, wofsLeadTime, wofsPath,\
-                c.ps_dir, wofs_file_list, ps_file_list) 
+                c.ps_dir, wofs_file_list, ps_file_list, ps_iTime) 
 
 
         return obj
@@ -535,7 +540,7 @@ def create_training():
                 proceed_ps = does_ps_exist(mld.ps_path, mld.ps_files[0])
                 #TODO: Need to check if the current PS file exists as well 
 
-                already_done = does_full_npy_exist(date, init_time, \
+                already_done = does_full_npy_exist(date, init_time, mld.ps_init,\
                                     mld.wofs_files[0], mld.wofs_files[-1], \
                                     c.train_fcst_full_npy_dir)
 
@@ -620,7 +625,7 @@ def create_warning_mode_training():
 
             #TODO: Need to check if the current PS file exists as well 
 
-            already_done = does_full_npy_exist(date, init_time, \
+            already_done = does_full_npy_exist(date, init_time, mld.ps_init,\
                                     mld.wofs_files[0], mld.wofs_files[-1], \
                                     c.train_fcst_full_npy_dir)
 
@@ -634,8 +639,8 @@ def create_warning_mode_training():
 
 
 
-def does_full_npy_exist(date_before_00z, wofs_initTime, first_wofs_file, last_wofs_file,\
-                            npy_path):
+def does_full_npy_exist(date_before_00z, wofs_initTime, ps_initTime,\
+            first_wofs_file, last_wofs_file, npy_path):
     '''Checks if we have the full npy training file'''
     
     #First, need to compute start and end valid times from first and 
@@ -649,8 +654,8 @@ def does_full_npy_exist(date_before_00z, wofs_initTime, first_wofs_file, last_wo
 
     end_valid, __ = ForecastSpecs.find_date_time_from_wofs(last_wofs_file, "forecast") 
 
-    filename = "%s/wofs1d_%s_%s_v%s-%s.npy" %(npy_path, date_before_00z, wofs_initTime, start_valid,\
-                    end_valid)
+    filename = "%s/wofs1d_%s_%s_%s_v%s-%s.npy" %(npy_path, date_before_00z, wofs_initTime, \
+                ps_initTime, start_valid, end_valid)
     
     if (os.path.isfile(filename)):
         exists = True 
@@ -694,7 +699,7 @@ def does_ps_exist(ps_direc, curr_ps_file):
     exists = False #Assume file doesn't exist 
     fullFile = "%s/%s" %(ps_direc, curr_ps_file) 
 
-    if (os.path.isfile(fullFile):
+    if (os.path.isfile(fullFile)):
         exists = True
 
 
