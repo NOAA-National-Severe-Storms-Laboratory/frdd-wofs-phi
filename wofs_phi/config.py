@@ -10,8 +10,8 @@
 #Options are: 
 #"forecast" for forecast mode in wofs viewer, 
 #"warning" for warning mode in wofs viewer, and
-#mode = "warning" 
-mode = "forecast"
+mode = "warning" 
+#mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
@@ -97,6 +97,10 @@ top_hour_inits = ["1700", "1800", "1900", "2000", "2100", "2200", "2300", "0000"
                      "0200", "0300", "0400", "0500", "0600", "0700", "0800", "0900", "1000",\
                      "1100", "1200", "1300", "1400", "1500", "1600"]
 
+all_wofs_init_times = ["1700", "1730", "1800", "1830", "1900", "1930", "2000", "2030", "2100",\
+                        "2130", "2200", "2230", "2300", "2330", "0000", "0030", "0100", "0130",\
+                        "0200", "0230", "0300", "0330", "0400", "0430", "0500", "0530", "0600"]
+
 next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500"]
 
 next_day_times = ["0000", "0005", "0010", "0015", "0020", "0025", "0030",\
@@ -131,7 +135,10 @@ ps_update_rate = 2 #ProbSevere updates every 2 minutes currently
 pkl_dir = "." #Will probably need to update later
 
 wofs_spinup_time = 25 #in minutes 
+ps_spinup_time = 5 #in minutes; mostly used for warning mode 
 wofs_bottom_init_min = 30
+
+wofs_time_between_runs = 30 #in minutes: time between new wofs initializations 
 
 torp_point_buffer = 7.5
 torp_prob_change_1 = 5

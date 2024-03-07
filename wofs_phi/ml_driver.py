@@ -5,6 +5,7 @@
 from wofs_phi import * 
 import config as c
 import os.path
+from itertools import compress 
 
 
 
@@ -71,6 +72,118 @@ class MLDriver:
         return obj
 
 
+
+    @staticmethod
+    def get_info_for_warning_mode(dt_ps_start, pre00z_date):
+
+        '''This method will create an MLDriver object based on a 
+            datetime object corresponding with real-time, i.e., 
+            the ProbSevere start time.
+
+            This method gathers the information needed to drive 
+            warning mode. Namely, 
+            @Returns wofs initialization time string and wofs lead time
+        '''
+
+        #Get valid period (i.e., start time + ps_spinup (5 min))
+        start_valid_dt = dt_ps_start + timedelta(minutes=c.ps_spinup_time)
+
+        #Get wofs initialization time 
+        wofs_init_dt, wofs_init_str = MLDriver.find_wofs_init_time(\
+                dt_ps_start, pre00z_date)
+
+        #Get wofs lead time -- i.e., difference between start of the valid period 
+        #and the initialization time 
+    
+        leadTime = ForecastSpecs.subtract_dt(start_valid_dt, wofs_init_dt, True)
+
+
+        return wofs_init_str, leadTime
+
+
+    @staticmethod 
+    def find_wofs_init_time(current_dt, before00z_date):
+        ''' Finds the wofs initialization time based on...
+            @current_dt is the datetime object corresponding
+                to the current date/time.
+            @before00z_date is the 8-character string (YYYYMMDD) corresponding
+                to the date before 00z. 
+            @Returns a datetime object and a 4-character string corresponding
+                to the wofs initialization time that should be used. 
+        '''
+
+        #Need to Get a list of datetime objects corresponding to when we 
+        #switch: i.e., wofs initialization times + wofs displacement. 
+
+        #Create list of wofs_init_datetime objects 
+        wofs_init_dts = MLDriver.get_wofs_init_dts(before00z_date, \
+                            c.all_wofs_init_times, c.wofs_time_between_runs)
+
+
+        #dts indicating when the given init time can be used 
+        increment_dts = [w + timedelta(minutes=c.wofs_spinup_time) \
+                            for w in wofs_init_dts]
+
+        #Compare current_dt to each element in increment_dts 
+        is_current_time_greater = [(current_dt >= i) for i in increment_dts]
+
+        #If there aren't any times that are greater, then we have to stop
+        #the code/can't proceed
+        if (sum(is_current_time_greater) <= 0):
+            print ("We don't have enough data to use warning mode yet") 
+            quit() 
+    
+
+        #If there's at least one true: We want the datetime object correponding to
+        #the index of the last True in is_current_time_greater
+
+        #apply the boolean list to the wofs_init_dts to get the "possible" list--
+        #of which we're interested in the last element
+        possible_dt_to_use = list(compress(wofs_init_dts, is_current_time_greater))
+        good_wofs_init_dt = possible_dt_to_use[-1]
+
+
+        #Convert this to string as well 
+        __, i_time_str = ForecastSpecs.dattime_to_str(good_wofs_init_dt) 
+
+        return good_wofs_init_dt, i_time_str
+
+
+    @staticmethod
+    def get_wofs_init_dts(date_pre_00z, init_time_list, wofs_update_freq):
+        ''' Computes a list of datetime objects based on...
+            @date_pre_00z is the before00z date (str; YYYYMMDD)
+            @init_time_list is a list of 4-character strings (HHMM) corresponding to 
+                all wofs initialization times (in chronological order, starting with 
+                e.g., "1700")
+            @wofs_update_freq is the time between wofs initializations in 
+                minutes (currently, 30) 
+        '''
+
+        dts_wofs_init = [] #Will hold the datetime objects
+
+
+        for d in range(len(init_time_list)):
+            wfs_init_time = init_time_list[d]
+            if (d == 0): #i.e., for first init time, get dt object
+                dt_obj = ForecastSpecs.str_to_dattime(wfs_init_time, date_pre_00z)   
+                #If it's after 00z, then have to increment by a day---even though
+                #this should basically never be the case
+                if (wfs_init_time in c.next_day_inits):
+                    dt_obj += timedelta(days=1) 
+
+            else: 
+                dt_obj += timedelta(minutes=wofs_update_freq) 
+                
+
+       
+            #Append to list 
+            dts_wofs_init.append(dt_obj) 
+ 
+
+        return dts_wofs_init
+
+
     @staticmethod
     def find_ps_files_from_first_wofs(first_wofs_file):
         ''' Finds the set of ProbSevere files given the first wofs
@@ -103,6 +216,10 @@ class MLDriver:
         #We need to add the spinup time if we're in forecast mode
         if (c.mode == "forecast"):
             wofs_dt += timedelta(minutes=c.wofs_spinup_time) 
+
+        #For warning mode, we need to remove time to account for ps spinup
+        elif (c.mode == "warning"):
+            wofs_dt -= timedelta(minutes=c.ps_spinup_time) 
 
         #Now, find initial probSevere datetime
         first_ps_dt = MLDriver.find_first_ps_datetime_from_wofs_datetime(wofs_dt)
@@ -414,6 +531,8 @@ def create_training():
                 #Check to make sure wofs files exist; if so we can generate. 
                 proceed = does_wofs_exist(mld.wofs_path, mld.wofs_files[0]) 
 
+                #TODO: Need to check if the current PS file exists as well 
+
                 already_done = does_full_npy_exist(date, init_time, \
                                     mld.wofs_files[0], mld.wofs_files[-1], \
                                     c.train_fcst_full_npy_dir)
@@ -428,6 +547,98 @@ def create_training():
         
  
     return 
+
+
+def create_warning_mode_training():
+    '''Will obtain the proper files, etc. when we're in warning mode.
+        NOTE: In real time, Warning mode will be driven purely by the actual time.
+        Similarly, in training mode, we will loop over a series of start times 
+    '''
+
+    window = 60 #Focus on 60 minute windows 
+    date_file = "probSevere_dates.txt"
+    dates = read_txt(date_file)
+    torpFiles = []
+
+    #start_times = \
+    #    ["1725", "1730", "1735", "1740", "1745", "1750", "1755",\
+    #     "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855",\
+    #     "1900", "1905", "1910", "1915", "1920", "1925",\
+    #     "1930", "1935", "1940", "1945", "1950", "1955",\
+    #     "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855",\
+    #    "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855",\
+    #    "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855",\
+    #    "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855",\
+    #    "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855",\
+    #    "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855",\
+    #    "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855",\
+    #    "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855",\
+    #    "1800", "1805", "1810", "1815", "1820", "1825",\
+    #     "1830", "1835", "1840", "1845", "1850", "1855"]
+
+    start_times = ["2015"] 
+
+
+    #NOTE: date is the before-00z date 
+    for d in range(len(dates)):
+        date = dates[d] 
+        for s in range(len(start_times)): 
+            start_time = start_times[s] 
+            #Create datetime object 
+            dt = ForecastSpecs.str_to_dattime(start_time, date) 
+
+            #Use this to start the MLDriver in warning mode 
+            #mld = MLDriver.start_driver_for_warning_mode(dt, date)
+
+            #Get the necessary info to start the driver 
+            init_time, lead_time = MLDriver.get_info_for_warning_mode(\
+                    dt, date) 
+
+            print (date, start_time, init_time, lead_time) 
+
+            #Now, start MLDriver object 
+            mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir)
+    
+            #Use this to drive the forecast 
+            ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
+                        mld.wofs_path, torpFiles, c.nc_outdir)
+
+            #Check to make sure wofs files exist; if so we can generate. 
+            proceed = does_wofs_exist(mld.wofs_path, mld.wofs_files[0])
+
+            #TODO: Need to check if the current PS file exists as well 
+
+            already_done = does_full_npy_exist(date, init_time, \
+                                    mld.wofs_files[0], mld.wofs_files[-1], \
+                                    c.train_fcst_full_npy_dir)
+
+            #Note: Can also check to make sure we don't already have a npy file 
+            if (proceed == True and already_done == False):
+            #if (proceed == True):
+
+                ml.generate()
+            
+
+    #Get valid period (i.e., start time + ps_spinup (5 min))
+
+    
+    #Get wofs initialization time 
+
+    #Get wofs lead time 
+
+    #Then, we should have everything we need to create an MLDriver object
+
+    return 
+
 
 
 def does_full_npy_exist(date_before_00z, wofs_initTime, first_wofs_file, last_wofs_file,\
@@ -489,7 +700,11 @@ def read_txt(txt_file):
 def main():
     '''Main method'''
 
-    create_training()
+    if (c.mode == "forecast"):
+        create_training()
+
+    elif (c.mode == "warning"):
+        create_warning_mode_training() 
 
     #date = "20190430" #date before 00z 
     #window = 60
