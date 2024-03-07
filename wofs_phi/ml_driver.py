@@ -529,8 +529,10 @@ def create_training():
                         mld.wofs_path, torpFiles, c.nc_outdir)
 
                 #Check to make sure wofs files exist; if so we can generate. 
-                proceed = does_wofs_exist(mld.wofs_path, mld.wofs_files[0]) 
+                proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0]) 
 
+
+                proceed_ps = does_ps_exist(mld.ps_path, mld.ps_files[0])
                 #TODO: Need to check if the current PS file exists as well 
 
                 already_done = does_full_npy_exist(date, init_time, \
@@ -538,7 +540,7 @@ def create_training():
                                     c.train_fcst_full_npy_dir)
 
                 #Note: Can also check to make sure we don't already have a npy file 
-                if (proceed == True and already_done == False):
+                if (proceed_wofs == True and proceed_ps == True and already_done == False):
                 #if (proceed == True):
             
                     ml.generate()
@@ -585,7 +587,9 @@ def create_warning_mode_training():
     #    "1800", "1805", "1810", "1815", "1820", "1825",\
     #     "1830", "1835", "1840", "1845", "1850", "1855"]
 
-    start_times = ["2015"] 
+    start_times = ["2000"] 
+    #Maybe for training in warning mode I'll pick a time at the top
+    #of the hour, or something 
 
 
     #NOTE: date is the before-00z date 
@@ -595,9 +599,6 @@ def create_warning_mode_training():
             start_time = start_times[s] 
             #Create datetime object 
             dt = ForecastSpecs.str_to_dattime(start_time, date) 
-
-            #Use this to start the MLDriver in warning mode 
-            #mld = MLDriver.start_driver_for_warning_mode(dt, date)
 
             #Get the necessary info to start the driver 
             init_time, lead_time = MLDriver.get_info_for_warning_mode(\
@@ -613,7 +614,9 @@ def create_warning_mode_training():
                         mld.wofs_path, torpFiles, c.nc_outdir)
 
             #Check to make sure wofs files exist; if so we can generate. 
-            proceed = does_wofs_exist(mld.wofs_path, mld.wofs_files[0])
+            proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0])
+
+            proceed_ps = does_ps_exist(mld.ps_path, mld.ps_files[0]) 
 
             #TODO: Need to check if the current PS file exists as well 
 
@@ -622,20 +625,10 @@ def create_warning_mode_training():
                                     c.train_fcst_full_npy_dir)
 
             #Note: Can also check to make sure we don't already have a npy file 
-            if (proceed == True and already_done == False):
-            #if (proceed == True):
+            if (proceed_wofs == True and proceed_ps == True and already_done == False):
 
                 ml.generate()
             
-
-    #Get valid period (i.e., start time + ps_spinup (5 min))
-
-    
-    #Get wofs initialization time 
-
-    #Get wofs lead time 
-
-    #Then, we should have everything we need to create an MLDriver object
 
     return 
 
@@ -687,6 +680,23 @@ def does_wofs_exist(wofs_direc, wofs_ALL_file):
     if (os.path.isfile(fullFile) or os.path.isfile(fullLegacyFile)):
         exists = True
         
+
+    return exists
+
+
+def does_ps_exist(ps_direc, curr_ps_file):
+    '''Method to test if the current probSevere file exists. 
+        @Returns True if so, else Returns False.
+        @ps_direc is the path tot he probSevere files 
+        @curr_ps_file is the current ProbSevere file name 
+    '''
+
+    exists = False #Assume file doesn't exist 
+    fullFile = "%s/%s" %(ps_direc, curr_ps_file) 
+
+    if (os.path.isfile(fullFile):
+        exists = True
+
 
     return exists
 
