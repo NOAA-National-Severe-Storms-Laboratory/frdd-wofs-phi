@@ -554,20 +554,19 @@ def create_training():
                                 report_radius)
 
                 #Note: Can also check to make sure we don't already have a npy file 
-                if (proceed_wofs == True and proceed_ps == True and already_done == False):
+                #if (proceed_wofs == True and proceed_ps == True and already_done == False):
+                if (proceed_wofs == True and proceed_ps == True):
 
                     ml.generate()
 
 
-                if (proceed_wofs == True and proceed_ps == True and \
-                    already_done_reps == False):
+                #if (proceed_wofs == True and proceed_ps == True and \
+                #    already_done_reps == False):
+                #
+                #    #Create a report object and generate/save the 
+                #    #reports grid 
+                #        pass
 
-                    #Create a report object and generate/save the 
-                    #reports grid 
-                        pass
-
-
-        
  
     return 
 

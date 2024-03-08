@@ -92,85 +92,99 @@ class MLGenerator:
         #These will be determined principally by the wofs files we're dealing with
         forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files, c.all_fields_file, c.all_methods_file, c.single_pt_file)
 
-        #Do PS preprocessing -- parallel track 1 -- Returns a ps object that holds an xarray and 
-        #extrapolated geodataframe (xarray is what we likely most care about)
 
-        #Skip for now for debugging the Wofs.preprocess_wofs method 
-        ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
+        if (c.generate_forecasts == True):
+            #Do PS preprocessing -- parallel track 1 -- Returns a ps object that holds an xarray and 
+            #extrapolated geodataframe (xarray is what we likely most care about)
 
-        #Do WoFS preprocessing -- parallel track 2 
-        wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
+            #Skip for now for debugging the Wofs.preprocess_wofs method 
+            ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files) 
 
-        #Concatenate parallel tracks 
-        combined_xr = pex.xr_from_ps_and_wofs(ps, wofs) 
+            #Do WoFS preprocessing -- parallel track 2 
+            wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
 
-        #Add predictors -- wofs lat/lon, wofs point, wofs initialization time
+            #Concatenate parallel tracks 
+            combined_xr = pex.xr_from_ps_and_wofs(ps, wofs) 
+
+            #Add predictors -- wofs lat/lon, wofs point, wofs initialization time
        
-        #Add gridded fields
+            #Add gridded fields
  
-        #Add latitude points to xarray 
-        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lats, "lat")
+            #Add latitude points to xarray 
+            combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lats, "lat")
 
-        #Add longitude points to xarray 
-        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lons, "lon") 
+            #Add longitude points to xarray 
+            combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lons, "lon") 
         
-        #Add wofs y points 
-        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "wofs_y") 
+            #Add wofs y points 
+            combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "wofs_y") 
 
-        #Add wofs x points
-        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "wofs_x") 
+            #Add wofs x points
+            combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "wofs_x") 
 
-        #Add wofs initialization time 
-        combined_xr = pex.add_single_field(combined_xr, Wofs.INIT_TIME_DICT[forecast_specs.wofs_init_time]\
+            #Add wofs initialization time 
+            combined_xr = pex.add_single_field(combined_xr, Wofs.INIT_TIME_DICT[forecast_specs.wofs_init_time]\
                                 , "wofs_init_time", fcst_grid.ny, fcst_grid.nx) 
 
-        #Add convolutions
-        #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
-        #Probably can compute stuff using the predictor_radii_km in config file 
-        #rf_sizes, grid spacing of wofs
-        conv_predictors_ds = pex.add_convolutions(combined_xr, c.conv_type, forecast_specs.allFields, \
+            #Add convolutions
+            #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
+            #Probably can compute stuff using the predictor_radii_km in config file 
+            #rf_sizes, grid spacing of wofs
+            conv_predictors_ds = pex.add_convolutions(combined_xr, c.conv_type, forecast_specs.allFields, \
                                 forecast_specs.allMethods, forecast_specs.singlePtFields, \
                                 c.predictor_radii_km, c.dx_km)
 
-        #Get 1d predictor names 
-        predictor_list = pex.get_predictor_list(forecast_specs.allFields, \
+            #Get 1d predictor names 
+            predictor_list = pex.get_predictor_list(forecast_specs.allFields, \
                                 forecast_specs.singlePtFields, c.predictor_radii_km, \
                                 c.extra_predictor_names)
 
        
-        #Save predictor names to file -- if desired 
-        #MLGenerator.save_predictor_names(predictor_list)
+            #Save predictor names to file -- if desired 
+            #MLGenerator.save_predictor_names(predictor_list)
 
-        #Extract 1d predictors  
-        one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
+            #Extract 1d predictors  
+            one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
                             forecast_specs, fcst_grid)
 
-        #Save predictors to file (if we're training)
-        if (c.is_train_mode == True):
+            #Save predictors to file (if we're training)
+            if (c.is_train_mode == True):
         
-            #torp_predictors = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs)
+                #torp_predictors = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs)
 
-            #Get the filenames used for saving 
-            full_npy_fname = MLGenerator.get_full_npy_filename(forecast_specs)
-            dat_fname = MLGenerator.get_dat_filename(forecast_specs)
-            rand_inds_fname = MLGenerator.get_rand_inds_filename(forecast_specs)
+                #Get the filenames used for saving 
+                full_npy_fname = MLGenerator.get_full_npy_filename(forecast_specs)
+                dat_fname = MLGenerator.get_dat_filename(forecast_specs)
+                rand_inds_fname = MLGenerator.get_rand_inds_filename(forecast_specs)
 
-            #Save predictors to appropriate files
-            pex.save_predictors(one_d_pred_array, c.sample_rate, fcst_grid, \
+                #Save predictors to appropriate files
+                pex.save_predictors(one_d_pred_array, c.sample_rate, fcst_grid, \
                         c.train_fcst_full_npy_dir, full_npy_fname, c.train_fcst_dat_dir,\
                         dat_fname, rand_inds_fname)
 
         
-        #TODO: Put in another method 
-        #If we're not in training mode...
-        else: 
+            #TODO: Put in another method 
+            #If we're not in training mode...
+            else: 
 
-            #Load RF, run the predictors through RF 
+                #Load RF, run the predictors through RF 
 
 
-            #Save predictions to ncdf 
+                #Save predictions to ncdf 
+
+                pass
+
+
+        #Get the reports if we're supposed to 
+        if (c.generate_reports == True):
+
+            rep = ReportGenerator.generate(forecast_specs, fcst_grid)
+
 
             pass
+
+
+
 
 
         return
@@ -227,22 +241,20 @@ class MLGenerator:
 class ReportGenerator:
     '''This class handles generating the report grid'''
 
-    def __init__(self, date_before_00z, date, rep_start_dt, rep_end_dt, rep_start, rep_end,\
+    #Variable names corresponding with how the coords.txt files are set up. 
+    COORDS_FILE_COLUMNS = ['time', 'lon', 'lat'] 
+
+
+    def __init__(self, date_before_00z, rep_start_dt, rep_end_dt,\
                     buffer_minutes, start_valid_dt, end_valid_dt, start_valid, end_valid,\
                     report_coords_df, report_gdf, report_grid, hazard, radius, target):
         '''@date_before_00z is the 8-character string (YYYYMMDD) before 00z
-            @date is the 8-character string (YYYYMMDD) of actual date 
-                i.e., that increments after 00z 
             @rep_start_dt is a datetime object corresponding to the start of 
                 the period we care about for reports i.e., 
                 start of the valid period - buffer time 
             @rep_end_dt is a datetime object corresponding to the end of the 
                 period we care about for reports. i.e., 
                 end of the valid period + buffer time 
-            @rep_start is the 4-character string (HHMM) corresponding to the start of 
-                the period we care about for reports (including buffer)
-            @rep_end is the 4-character string (HHMM) corresponding to the end of 
-                the period we care about for reports (including buffer) 
             @buffer_minutes is the period of time to add on either side of the valid
                 period in minutes (e.g., 10 means add +/- 10 minutes to the valid period)
             @start_valid_dt is the datetime object corresponding to the start
@@ -265,11 +277,8 @@ class ReportGenerator:
         '''
 
         self.date_before_00z = date_before_00z
-        self.date = date
         self.rep_start_dt = rep_start_dt
         self.rep_end_dt = rep_end_dt
-        self.rep_start = rep_start
-        self.rep_end = rep_end
         self.buffer_minutes = buffer_minutes
         self.start_valid_dt = start_valid_dt 
         self.end_valid_dt = end_valid_dt 
@@ -284,19 +293,268 @@ class ReportGenerator:
 
         return 
 
+    #TODO: Come back here
     @classmethod
-    def generate(cls, fcst_specs):
+    def generate(cls, fcst_specs, fcst_grid):
         '''Factory method for creating a report object
             @fcst_specs is a ForecastSpecs object for the current 
                 situation. 
+            @grid is a 
         '''
 
+        #We'll want to generate ReportGenerator objects for each hazard 
+        
+        #Set the date and pre-00z date (probably from fcst_specs, etc.)
+        dateBefore00z = fcst_specs.before_00z_date
+
+        startValidDT = fcst_specs.start_valid_dt 
+        endValidDT = fcst_specs.end_valid_dt 
+
+        startValid_str = fcst_specs.start_valid
+        endValid_str = fcst_specs.end_valid
+
+        #Obtain the reps_start_dt and reps_end_dt objects by adding in the 
+        #buffer time 
+        repsStartDT = startValidDT - timedelta(minutes=c.report_time_buffer)
+        
+        repsEndDT = endValidDT + timedelta(minutes=c.report_time_buffer) 
+
+
+        zero_2d_grid = np.zeros((fcst_grid.ny, fcst_grid.nx)) #Used to initialize the binary report grid 
+
+        #Need to obtain ReportsGenerator object for each hazard
+        for hazard in c.final_hazards:
+            for radius in c.obs_radii_float:
+                reps_file = "%s/%s_coords_%s.txt" %(c.reps_coords_dir, hazard, dateBefore00z)
+           
+                #Obtain the coordinates in a pandas dataframe  -- NOTE: We'll add a datetime column 
+                #as well 
+                coords_df = ReportGenerator.get_daily_reps_df(reps_file, cls.COORDS_FILE_COLUMNS) 
+
+                #Add a datetime column to the coords_df 
+                coords_df = ReportGenerator.add_datetime_to_df(coords_df, dateBefore00z) 
+
+                #Get the subset of reports we're interested in based on the repsStartDT and repsEndDT
+
+                subset_df = ReportGenerator.get_subset_reps_df(coords_df, repsStartDT, repsEndDT)
+
+                subset_df = ReportGenerator.add_latlon_to_df(coords_df) 
+
+
+                #Initialize a ReportGenerator object -- with gdf initialized as None. Will be updated later. 
+
+                rep = ReportGenerator(dateBefore00z, repsStartDT, repsEndDT, c.report_time_buffer, startValidDT, endValidDT, \
+                        startValid_str, endValid_str, subset_df, None, zero_2d_grid, hazard, radius, c.report_target)
+
+
+                #Set the coordinates in a pandas geodataframe 
+                rep.set_gdf()
+
+                #Now we want to get the binary report grid  
+                rep.set_report_grid(fcst_grid)
 
 
 
+
+    def set_report_grid(self, curr_grid):
+
+        '''Sets the binary report grid from other instance variables/attributes.
+            @curr_grid is the current Grid object (wofs forecast grid).
+        '''
+        #Only need to do this if we have reports 
+        if (len(self.report_coords_df) > 0):
+           
+
+            #NOTE: We also need a wofs geodataframe 
+            #get wofs dataframe from grid object
+            wofs_gdf = PS.get_wofs_gdf(curr_grid)
+
+            #Merge the two geodataframes 
+            new_gdf = ReportGenerator.merge_wofs_and_reps(wofs_gdf, self.report_gdf, c.dx_km)
+
+
+            #Get the 2d footprints 
+
+            footprints = pex.get_footprints([self.radius], c.dx_km)
+            
+            #There should only be one element here--the first
+            footprints = footprints[0]
+
+            #Next, binarize the wofs grid 
+
+            binary_grid = ReportGenerator.binarize_wofs(new_gdf, curr_grid.ny, curr_grid.nx, footprints)
+
+            #Update the instance
+            self.report_grid = binary_grid 
 
         return 
 
+
+    def set_gdf(self):
+        '''sets the report gdf from other instance variables/attibutes'''
+
+        #If there are no elements to set, then the report_gdf attribute will be
+        #left as None
+        if (len(self.report_coords_df) == 0):
+            self.report_gdf = None
+
+        else: 
+            out_gdf = gpd.GeoDataFrame(data=self.report_coords_df, geometry=self.report_coords_df['latlon'], crs="EPSG:4326")
+            #Set the instance variable
+            self.report_gdf = out_gdf
+
+        return 
+
+
+    @staticmethod
+    def binarize_wofs(in_gdf, nY, nX, footprint_arr):
+        '''Binarizes the wofs grid (1 with observed LSR, 0 otherwise) and applies the spatial 
+            radius 
+            @Returns a 2-d array corresponding to the convolved binarized field (ny,nx). 
+            @in_gdf is the merged wofs-reports geodataframe
+            @nY is the number of y points
+            @nX is the number of x points
+            @footprint_arr is the 2-d footprints array
+        '''
+
+        #First, create an initial wofs grid and binarize
+        wofs_binary = np.zeros((nY, nX))
+
+        num_reps = len(in_gdf)
+        jpts = in_gdf['wofs_j'].values
+        ipts = in_gdf['wofs_i'].values
+
+        for n in range(num_reps):
+            #Get the wofs point
+            jpt = jpts[n]
+            ipt = ipts[n]
+            wofs_binary[jpt,ipt] = 1.0
+
+        #Now, we can apply the convolution -- and save to 2d array
+
+        conv_wofs_binary = maximum_filter(wofs_binary, footprint=footprint_arr)
+
+        return conv_wofs_binary
+
+
+    @staticmethod 
+    def merge_wofs_and_reps(wofsGDF, repsGDF, max_distance_km):
+
+        '''Returns a new geodataframe that essentially maps the reports geodataframe
+            to the wofs grid.
+            @wofsGDF is the wofs geodataframe
+            @repsGDF is the reports geodataframe 
+            @max_distance is the maximum distance in km 
+            @Returns merged wofs and reps geodataframe 
+                (merged based on nearest point within @max_distance_km
+            NOTE (from docs): Results will include multiple output records for a single input record where 
+                there are multiple equidistant nearest or intersected neighbors (probably fine because
+                we apply a buffer anyway) 
+        '''
+
+        #Convert maxDistance to meters
+        search_radius = max_distance_km*1000.0
+
+        #Convert both geodataframes to meters geometry
+        wofsGDF.to_crs("EPSG:32634", inplace=True)
+        repsGDF.to_crs("EPSG:32634", inplace=True)
+
+        #Apply the merger 
+        out_gdf = wofsGDF.sjoin_nearest(repsGDF, how='inner', max_distance=search_radius)
+
+        #Convert back to latlon coords
+        out_gdf.to_crs("EPSG:4326", inplace=True)
+        wofsGDF.to_crs("EPSG:4326", inplace=True)
+        repsGDF.to_crs("EPSG:4326", inplace=True)
+
+        return out_gdf
+
+
+    @staticmethod 
+    def add_latlon_to_df(in_df):
+        ''' Adds a "latlon" column to the incoming dataframe  [form: Point(lon, lat)]
+            @in_df is the incoming dataframe (columns "time", "lon", "lat", "datetime") 
+        '''
+        if (len(in_df) > 0):
+            #Add latlon column 
+
+            in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
+
+        return in_df
+
+    @staticmethod
+    def get_subset_reps_df(reps_df, start_time_dt, end_time_dt):
+        '''Returns the subset of the dataframe that we're interested in. 
+            @reps_df is the incoming dataframe of reports (columns of "time", "lon", "lat", "datetime")
+            @start_time_dt is the datetime object corresponding to the reports start time 
+                with buffer applied
+            @end_time_dt is the datetime object corresponding to the reports end time 
+                with buffer applied
+        '''
+
+        if (len(reps_df) > 0):
+
+            reps_df = reps_df.loc[(reps_df['datetime'] >= start_time_dt) & (reps_df['datetime'] <= end_time_dt)]
+
+
+        return reps_df
+
+
+    @staticmethod
+    def add_datetime_to_df(reps_df, datebefore00z):
+        '''
+            Adds a column of datetimes to the reports dataframe if the reps_df is not empty
+            @Returns this new dataframe 
+            @reps_df is the incoming dataframe of reports (columns of "time", "lon", "lat") 
+            @datebefore00z is the string date (YYYYMMDD) before 00z 
+        '''
+
+        #Need to Add column of datetimes 
+        if (len(reps_df) > 0):
+
+            #Get a list of time strings from the df 
+            times = [str(int(t)).zfill(4) for t in reps_df['time']]
+
+            #12z datetime object -- will be used to know whether or not to increment the datetime objects after 00z
+            dattime_12z = ForecastSpecs.str_to_dattime("1200", datebefore00z)
+
+            #Get corresponding datetime objects 
+            datetimes = [] 
+            for r in range(len(times)):
+                time = times[r] 
+                dt_obj = ForecastSpecs.str_to_dattime(time, datebefore00z)
+
+                #If this datetime object is earlier than the 12z datetime object given above, we need to increment
+                #by 1 day 
+                if (dt_obj < dattime_12z):
+                    dt_obj += timedelta(days=1) 
+
+                #Append to list 
+                datetimes.append(dt_obj) 
+
+            #Add column to dataframe 
+            reps_df['datetime'] = datetimes
+        else: 
+            all_columns = ReportGenerator.COORDS_FILE_COLUMNS
+            all_columns.append('datetime') 
+            reps_df = pd.DataFrame(columns=all_columns) 
+
+        return reps_df
+
+    @staticmethod
+    def get_daily_reps_df(coordsFile, header_names):
+        '''Reads in the file containing the reports for the given day.
+            @Returns a pandas dataframe with the given @header names as columns
+            @coordsFile is the filename containing the reports for the given
+                day. 
+            @header_names is the list of column names corresponding to the structure of 
+                the @coordsFile  
+
+        '''
+
+        reps_df = pd.read_csv(coordsFile, names=header_names, dtype='float32', header=None)
+
+        return reps_df 
 
 
 
@@ -689,7 +947,6 @@ class WoFS_Agg:
         return 
 
 
-
     @classmethod
     def create_wofs_agg_list(cls, wofsFields, wofsMethods, specsObj, gridObj, \
                                 wofsPath, wofsFilenames):
@@ -737,7 +994,6 @@ class WoFS_Agg:
 
             #Set the object's temporal aggregation
             wofs_agg_obj.set_temporal_aggregation()
-
 
             #Add wofs_agg_obj to list 
             agg_files.append(wofs_agg_obj) 
@@ -2091,7 +2347,8 @@ class ForecastSpecs:
 
         self.before_00z_date = before_00z_date
 
-        pass
+        return 
+
 
     @classmethod
     

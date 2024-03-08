@@ -23,6 +23,17 @@ generate_forecasts = False
 
 generate_reports = True 
 
+#Buffer time for a report in minutes: 
+#i.e., consider reports within this many minutes of the valid period
+#as "yes" observations as well. 
+#e.g., 10 means if our original valid period is from 0000-0100Z, we would
+#consider yes reports to be from 2350-0110Z. 
+report_time_buffer = 10 
+
+#"lsrs" for training on local storm reports 
+#"warnings" for training on warnings 
+report_target = "lsrs"
+
 #Fraction of data to randomly sample for training
 sample_rate = 0.1 
 
@@ -33,6 +44,10 @@ train_obs_full_npy_dir = "/work/eric.loken/wofs/paper6/obs/full_npy"
 #Path to dat directory for training
 train_fcst_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/dat"
 train_obs_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/dat"
+
+#Path to the reports coordinates directory -- i.e., where are the coords.txt 
+#files that need to be read in during training? 
+reps_coords_dir = "/work/eric.loken/wofs/new_torn/storm_events_reports/fromThea"
 
 
 #If True, use the ALL naming convention (will be true on cloud) 
@@ -76,8 +91,11 @@ predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially 
 #Fields not part of the standard wofs or ProbSevere fields that we'd like to include as extras 
 extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 
-obs_radii = ["30.0", "15.0", "7.5", "39.0"]
-final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
+#obs_radii_str = ["30.0", "15.0", "7.5", "39.0"]
+obs_radii_str = ["39.0", "30.0", "15.0", "7.5"] 
+obs_radii_float = [39, 30, 15, 7.5]
+#final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
+final_str_obs_radii = ["39", "30","15", "7_5"] #form to use for final ncdf files
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
 wofs_fields_file = "standard_wofs_variables.txt"
