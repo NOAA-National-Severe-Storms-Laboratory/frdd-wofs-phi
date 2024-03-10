@@ -238,6 +238,40 @@ class MLGenerator:
 
         return use_fname
 
+    @staticmethod
+    def get_obs_full_npy_filenames(fSpecs, haz_name, str_radius):
+        '''Returns the filenames for the 1d and 2d full_npy files (for obs)
+            @fSpecs is a ForecastSpecs object
+            @haz_name is the hazard name
+            @str_radius is the radius of the obs in string format
+        '''
+        
+        use_fname_1d = "%s_reps1d_%s_v%s-%s_r%skm.npy" %(haz_name, fSpecs.before_00z_date,\
+                        fSpecs.start_valid, fSpecs.end_valid, str_radius)
+
+        use_fname_2d = "%s_reps2d_%s_v%s-%s_r%skm.npy" %(haz_name, fSpecs.before_00z_date,\
+                        fSpecs.start_valid, fSpecs.end_valid, str_radius)
+
+
+        return use_fname_1d, use_fname_2d  
+
+    @staticmethod
+    def get_obs_dat_filename(fSpecs, haz_name, str_radius):
+        ''' Returns the filename for the dat file (for obs)
+            @fSpecs is a ForecastSpecs object
+            @haz_name is the hazard name
+            @str_radius is the radius of the obs in string format
+        '''
+       
+        use_fname = "%s_reps1d_%s_%s_%s_v%s-%s_r%skm.npy" %(haz_name, fSpecs.before_00z_date,\
+                        fSpecs.wofs_init_time,fSpecs.ps_init_time, fSpecs.start_valid,\
+                        fSpecs.end_valid, str_radius)
+ 
+
+        return use_fname
+
+
+
 class ReportGenerator:
     '''This class handles generating the report grid'''
 
@@ -247,7 +281,8 @@ class ReportGenerator:
 
     def __init__(self, date_before_00z, rep_start_dt, rep_end_dt,\
                     buffer_minutes, start_valid_dt, end_valid_dt, start_valid, end_valid,\
-                    report_coords_df, report_gdf, report_grid, hazard, radius, target):
+                    report_coords_df, report_gdf, report_grid_2d, report_grid_1d,\
+                    rand_inds, sampled_grid_1d, hazard, radius, target):
         '''@date_before_00z is the 8-character string (YYYYMMDD) before 00z
             @rep_start_dt is a datetime object corresponding to the start of 
                 the period we care about for reports i.e., 
@@ -268,7 +303,12 @@ class ReportGenerator:
             @report_coords_df is a dataframe of reports with columns ['time', 'lon', 'lat']
             @report_gdf is a geodataframe of report examples (locations are Points (or 
                 Polygons for warnings)) 
-            @report_grid is a 2-d grid of binary reports 
+            @report_grid_2d is a 2-d grid of binary reports 
+            @report_grid_1d is a 1-d "grid" of binary reports (correpsonding to above) 
+            @rand_inds is a list of random indices used to sample the 1-d grid of binary
+                reports (for training) 
+            @sampled_grid_1d is the list of randomly-sampled 1-d points 
+                (to use during training) 
             @hazard is a string corresponding to the hazard investigated (e.g., 
                 "hail", "wind", or "tornado") 
             @radius is the spatial radius to apply (e.g., 7.5, 15, 30, 39km) 
@@ -286,7 +326,10 @@ class ReportGenerator:
         self.end_valid = end_valid
         self.report_coords_df = report_coords_df
         self.report_gdf = report_gdf
-        self.report_grid = report_grid
+        self.report_grid_2d= report_grid_2d
+        self.report_grid_1d= report_grid_1d
+        self.rand_inds = rand_inds
+        self.sampled_grid_1d = sampled_grid_1d
         self.hazard = hazard 
         self.radius = radius
         self.target = target
@@ -321,6 +364,8 @@ class ReportGenerator:
 
 
         zero_2d_grid = np.zeros((fcst_grid.ny, fcst_grid.nx)) #Used to initialize the binary report grid 
+        zero_1d_grid = np.zeros(fcst_grid.ny*fcst_grid.nx) 
+        zero_rand_inds_arr = np.zeros(int(fcst_grid.ny*fcst_grid.nx*c.sample_rate))
 
         #Need to obtain ReportsGenerator object for each hazard
         for hazard in c.final_hazards:
@@ -344,19 +389,92 @@ class ReportGenerator:
                 #Initialize a ReportGenerator object -- with gdf initialized as None. Will be updated later. 
 
                 rep = ReportGenerator(dateBefore00z, repsStartDT, repsEndDT, c.report_time_buffer, startValidDT, endValidDT, \
-                        startValid_str, endValid_str, subset_df, None, zero_2d_grid, hazard, radius, c.report_target)
+                        startValid_str, endValid_str, subset_df, None, zero_2d_grid, zero_1d_grid, \
+                        zero_rand_inds_arr, zero_rand_inds_arr, hazard, radius, c.report_target)
 
 
                 #Set the coordinates in a pandas geodataframe 
                 rep.set_gdf()
 
                 #Now we want to get the binary report grid  
-                rep.set_report_grid(fcst_grid)
+                rep.set_report_grid_2d(fcst_grid)
+
+                #Set the 1d binary report grid 
+                rep.set_report_grid_1d(fcst_grid) 
+
+                #Set the random indices list
+                rep.set_rand_inds(fcst_specs)
+
+                #Set the sampled 1d report grid 
+                rep.set_sampled_grid_1d()
+
+                #Now we just need to save to file -- with the random sampling as well 
+    
+
+                rep.save_to_file(fcst_specs)
 
 
+    def save_to_file(self, specs):
+        '''Saves the binary 2-d array to file
+            @specs is a ForecastSpecs object
+        '''
+
+        #Get filenames 
+        full_npy_one_d_name, full_npy_two_d_name = MLGenerator.get_obs_full_npy_filenames(\
+                specs, self.hazard, str(self.radius))
+
+        dat_name = MLGenerator.get_obs_dat_filename(specs, self.hazard, str(self.radius))
+        
+
+        #Save to appropriate files 
+        np.save("%s/%s" %(c.train_obs_full_npy_dir, full_npy_two_d_name), self.report_grid_2d)
+        np.save("%s/%s" %(c.train_obs_full_npy_dir, full_npy_one_d_name), self.report_grid_1d)
+        self.sampled_grid_1d.tofile("%s/%s" %(c.train_obs_dat_dir, dat_name))
+        
+        return 
+    
+    def set_rand_inds(self, specs):
+        ''' Obtains the list of random indices to use.
+            @specs is a ForecastSpecs object.
+         '''
+        #Get rand_ind filename 
+        rand_ind_name = "%s/%s" %(c.train_fcst_dat_dir, \
+                            MLGenerator.get_rand_inds_filename(specs))
+
+        #Read in rand_inds
+        rand_inds = np.load(rand_ind_name) 
+    
+        #Set random indices
+        self.rand_inds = rand_inds
 
 
-    def set_report_grid(self, curr_grid):
+        return 
+
+    def set_sampled_grid_1d(self):
+        ''' Sets the sampled_grid_1d using the random indices and report_grid_1d
+            attributes.
+        '''
+        sampled_grid = self.report_grid_1d[self.rand_inds]
+        self.sampled_grid_1d = np.float32(sampled_grid)
+
+        return 
+
+    def set_report_grid_1d(self, curr_grid):
+        '''Sets the 1d reports attribute from the report_grid_2d attribute 
+        '''
+
+        #Only need to update this if we have reports 
+        if (len(self.report_coords_df) > 0):
+            n_points = curr_grid.ny*curr_grid.nx #Total number of grid points 
+        
+            one_d_grid = self.report_grid_2d.reshape(n_points, -1) 
+
+            self.report_grid_1d = np.float32(one_d_grid)
+
+        return 
+
+
+    def set_report_grid_2d(self, curr_grid):
 
         '''Sets the binary report grid from other instance variables/attributes.
             @curr_grid is the current Grid object (wofs forecast grid).
@@ -384,8 +502,11 @@ class ReportGenerator:
 
             binary_grid = ReportGenerator.binarize_wofs(new_gdf, curr_grid.ny, curr_grid.nx, footprints)
 
+            #Make float32
+            binary_grid = np.float32(binary_grid) 
+
             #Update the instance
-            self.report_grid = binary_grid 
+            self.report_grid_2d = binary_grid 
 
         return 
 

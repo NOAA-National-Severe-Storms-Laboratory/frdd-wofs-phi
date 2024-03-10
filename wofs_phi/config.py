@@ -39,7 +39,8 @@ sample_rate = 0.1
 
 #Path to full_npy directory for training
 train_fcst_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/full_npy"
-train_obs_full_npy_dir = "/work/eric.loken/wofs/paper6/obs/full_npy"
+#train_obs_full_npy_dir = "/work/eric.loken/wofs/paper6/obs/full_npy"
+train_obs_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/full_npy"
 
 #Path to dat directory for training
 train_fcst_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/dat"
