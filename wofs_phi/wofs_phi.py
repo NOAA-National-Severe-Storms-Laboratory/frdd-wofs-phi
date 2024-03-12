@@ -163,12 +163,22 @@ class MLGenerator:
                         dat_fname, rand_inds_fname)
 
         
-            #TODO: Put in another method 
-            #If we're not in training mode...
             else: 
 
-                #Load RF, run the predictors through RF 
+                #NOTE: All radii and hazards will go into the same ncdf file 
 
+                MLPrediction.create_rf_predictions(forecast_specs, fcst_grid) 
+
+                #Get RF filenames
+                #rf_filenames = MLGenerator.get_rf_filenames(forecast_specs.forecast_window)
+                #print (rf_filenames) 
+
+                #Load RFs
+
+
+                #Get predictions (for each hazard) 
+
+                
 
                 #Save predictions to ncdf 
 
@@ -178,11 +188,10 @@ class MLGenerator:
         #Get the reports if we're supposed to 
         if (c.generate_reports == True):
 
+            #TODO: input the one_d_pred_array
             rep = ReportGenerator.generate(forecast_specs, fcst_grid)
 
-
-            pass
-
+        
 
 
 
@@ -190,6 +199,7 @@ class MLGenerator:
         return
 
 
+   
     @staticmethod
     def save_predictor_names(pred_list):
         '''Saves predictor names to text file
@@ -270,6 +280,101 @@ class MLGenerator:
 
         return use_fname
 
+
+class MLPrediction:
+    ''' This class handles the ML prediction'''
+
+
+    def __init__(self, rf_filename, hazard, radius_str, radius_float, probs,\
+                    rf_model):
+        '''@rf_filename is the full name of the pickled model (including the path)
+            @hazard is the string hazard name (e.g., "wind", "hail", or "tornado") 
+            @radius_str is the radius in string form (e.g., "7.5", "15", "30", "39", 
+                or "warning" if trained on warnings)
+            @radius_float is the radius in float form (e.g., 7.5, 15.0, 30.0, etc.; 
+                or 0.0 if trained on warnings)
+            @rf_model is the unpickled RF model used to make predictions 
+        '''
+
+
+        self.rf_filename = rf_filename
+        self.hazard = hazard
+        self.time_window = time_window 
+        self.radius_str = radius_str
+        self.radius_float = radius_float
+        self.probs = probs 
+        self.rf_model = rf_model 
+    
+
+        return 
+
+
+    @classmethod
+    def create_rf_predictions(cls, specs, grid_obj):
+        '''Factory method for creating RF predictions.
+            @specs is a ForecastSpecs object
+            @grid_obj is a Grid object
+        '''
+
+        #TODO: Might need to add 
+
+        zero_probs_2d = np.zeros((grid_obj.ny, grid_obj.nx))
+        
+
+        for hazard in c.final_hazards:
+
+            for r in range(len(c.obs_radii_str)):
+                radius_str = c.obs_radii_str[r]
+                radius_float = c.obs_radii_float[r] 
+
+                #Get filename 
+                rf_filename = MLPrediction.get_rf_filename(specs.forecast_window,\
+                                hazard, radius_str) 
+
+
+                rfModel = MLPrediction.load_rf_model(rf_filename) 
+                #Create new MLPrediction object 
+                mlp = MLPrediction(rf_filename, hazard, radius_str, radius_float, \
+                            zero_probs_2d, rfModel)
+
+                #Now, implement instance methods -- TODO 
+
+
+                
+
+                pass
+
+        return 
+
+
+    #TODO Make predictions /Get probabilities 
+   
+    @staticmethod 
+    def load_rf_model(filename):
+        '''Loads given pkl file (@filename) into an array'''
+
+        f = open(Filename, 'rb')
+        new = pickle.load(f)
+        f.close()
+
+    return new
+
+
+
+    #TODO: Will have to fully implmement this later -- and probably make this an instance method
+    @staticmethod
+    def get_rf_filename(window_minutes, haz_name, radius):
+        '''Gets the full filenames to the rf file. Returns the pkl files 
+            in the hazard order as given in the config file
+            @window_minutes is the time window of the valid period in minutes
+
+        '''
+
+        pkl_filename = "%s/wofsphi_%s_%smin_%s_mode_r%skm.pkl" \
+                        %(c.rf_dir, haz_name, window_minutes, c.mode, radius)
+
+
+        return pkl_filename
 
 
 class ReportGenerator:
@@ -412,6 +517,8 @@ class ReportGenerator:
     
 
                 rep.save_to_file(fcst_specs)
+
+        return rep 
 
 
     def save_to_file(self, specs):

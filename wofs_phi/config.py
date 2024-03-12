@@ -15,11 +15,16 @@
 mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
-is_train_mode = True
+#is_train_mode = True
+is_train_mode = False
 model_save_dir = '../models'
 
+#Path to the trained rfs 
+#rf_dir = "/work/ryan.martz/wofs_phi_data/models/wofs_psv2_no_torp/hail/wofslag_25/length_60"
+rf_dir = "/work/eric.loken/wofs/2024_update/SFE2024/rf_models"
+
 #May or may not eventually use these
-generate_forecasts = False
+generate_forecasts = True 
 
 generate_reports = True 
 
@@ -93,10 +98,10 @@ predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially 
 extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 
 #obs_radii_str = ["30.0", "15.0", "7.5", "39.0"]
-obs_radii_str = ["39.0", "30.0", "15.0", "7.5"] 
-obs_radii_float = [39, 30, 15, 7.5]
+obs_radii_str = ["0", "39.0", "30.0", "15.0", "7.5"] 
+obs_radii_float = [0, 39, 30, 15, 7.5]
 #final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
-final_str_obs_radii = ["39", "30","15", "7_5"] #form to use for final ncdf files
+final_str_obs_radii = ["0", "39", "30","15", "7_5"] #form to use for final ncdf files
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
 wofs_fields_file = "standard_wofs_variables.txt"
