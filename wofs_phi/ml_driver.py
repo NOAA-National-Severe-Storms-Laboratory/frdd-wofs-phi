@@ -74,16 +74,35 @@ class MLDriver:
     @staticmethod
     def find_ps_files_from_first_wofs(first_wofs_file):
         ''' Finds the set of ProbSevere files given the first wofs
-            file
+            file.
+
+            NOTE: This will depend if we are in forecast or warning
+            mode.
+            In forecast mode (at least for training), the first
+                probSevere file will be from wofs initialization
+                time plus wofs spinup time 
+            In warning mode, the first probSevere file will be the
+                most recent PS file relative to the start of the 
+                valid period 
         '''
         
         #First, need to get the datetime object associated with the
         #first wofs file
-        wofs_time, wofs_date = ForecastSpecs.find_date_time_from_wofs(\
+
+
+        if (c.mode == "warning"):
+            wofs_time, wofs_date = ForecastSpecs.find_date_time_from_wofs(\
                 first_wofs_file, "forecast") 
+        elif (c.mode == "forecast"):
+            wofs_time, wofs_date = ForecastSpecs.find_date_time_from_wofs(\
+                first_wofs_file, "init") #But then we still need to add the spinup in this case
 
 
         wofs_dt = ForecastSpecs.str_to_dattime(wofs_time, wofs_date) 
+
+        #We need to add the spinup time if we're in forecast mode
+        if (c.mode == "forecast"):
+            wofs_dt += timedelta(minutes=c.wofs_spinup_time) 
 
         #Now, find initial probSevere datetime
         first_ps_dt = MLDriver.find_first_ps_datetime_from_wofs_datetime(wofs_dt)
@@ -160,11 +179,15 @@ class MLDriver:
             the first wofs datetime object -- based on the 
             principle that ProbSevere files are generated every
             2 minutes (on the even minutes)
+            @dt_wofs is the wofs datetime object corresponding to
+                either the start of the valid period (in warning
+                mode) or the wofs initialization time + spinup time
+                (in forecast mode) 
             @Returns datetime object corresponding to the first
                 ProbSevere time
         '''
 
-        
+
         #See if we're at an even minute. If so, dt_wofs is the 
         #first probSevere dt. Else, we need to subtract 1 minute
 
@@ -396,9 +419,10 @@ def create_training():
                                     c.train_fcst_full_npy_dir)
 
                 #Note: Can also check to make sure we don't already have a npy file 
-                #if (proceed == True and already_done == False):
+                if (proceed == True and already_done == False):
+                #if (proceed == True):
             
-                ml.generate()
+                    ml.generate()
 
                 
         
