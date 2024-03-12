@@ -230,7 +230,6 @@ class MLGenerator:
 class MLTrainer:
     '''This class handles the training of the model'''
     
-    NUM_TRAINING_VARS = 269
     GRID_SHAPE_X = 300 #shape to save model probs to x coord
     GRID_SHAPE_Y = 300 #shape to save model probs to y coord
     
@@ -503,17 +502,18 @@ class MLTrainer:
         start_str = start_dt.strftime('%Y%m%d-%H%M').split('-')[1]
         end_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
         
-        full_npy_fname = '%s/%s_reps1d_%s_v%s-%s_r%skm.npy' %(c.train_obs_full_npy_dir, self.hazard, day_str, start_str, end_str, str(r))
-        if full_npy == True:
-            return full_npy_fname
-        obs_full_npy = np.load(full_npy_fname)
-        sample_indices_fname = MLGenerator.get_rand_inds_filename(fcst_specs)
-        sample_indices_full_fname = '%s/%s' %(c.train_fcst_dat_dir, sample_indices_fname)
-        sample_indices = np.load(sample_indices_full_fname)
-        sampled_obs = obs_full_npy[sample_indices]
-        
-        sampled_obs_dat_fname = '%s/%s_reps1d_%s_%s_v%s-%s_r%skm.dat' %(c.train_obs_dat_dir, self.hazard, day_str, init_str, start_str, end_str, str(r))
-        sampled_obs.tofile(sampled_obs_dat_fname)
+        if c.train_type == 'obs:
+            full_npy_fname = '%s/%s_reps1d_%s_v%s-%s_r%skm.npy' %(c.train_obs_full_npy_dir, self.hazard, day_str, start_str, end_str, str(r))
+            if full_npy == True:
+                return full_npy_fname
+            obs_full_npy = np.load(full_npy_fname)
+            sample_indices_fname = MLGenerator.get_rand_inds_filename(fcst_specs)
+            sample_indices_full_fname = '%s/%s' %(c.train_fcst_dat_dir, sample_indices_fname)
+            sample_indices = np.load(sample_indices_full_fname)
+            sampled_obs = obs_full_npy[sample_indices]
+
+            sampled_obs_dat_fname = '%s/%s_reps1d_%s_%s_v%s-%s_r%skm.dat' %(c.train_obs_dat_dir, self.hazard, day_str, init_str, start_str, end_str, str(r))
+            sampled_obs.tofile(sampled_obs_dat_fname)
         
         return sampled_obs_dat_fname
         
@@ -638,7 +638,7 @@ class MLTrainer:
 
         #print arr.shape
         #Rebroadcast the data into 2-d array with proper format
-        arr.shape = (-1, MLTrainer.NUM_TRAINING_VARS)
+        arr.shape = (-1, c.num_training_vars)
         return arr
     
     def read_obs_binary(self, infile):

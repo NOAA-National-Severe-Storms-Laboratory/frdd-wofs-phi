@@ -16,6 +16,7 @@ mode = "forecast"
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
 plot_in_training = True
+num_training_vars = 269
 
 train_type = 'obs'
 model_save_dir = '/work/ryan.martz/wofs_phi_data/%s_train/models/wofs_psv2_no_torp' %(train_type)
