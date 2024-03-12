@@ -167,7 +167,7 @@ class MLGenerator:
 
                 #NOTE: All radii and hazards will go into the same ncdf file 
 
-                MLPrediction.create_rf_predictions(forecast_specs, fcst_grid) 
+                MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array) 
 
                 #Get RF filenames
                 #rf_filenames = MLGenerator.get_rf_filenames(forecast_specs.forecast_window)
@@ -286,14 +286,17 @@ class MLPrediction:
 
 
     def __init__(self, rf_filename, hazard, radius_str, radius_float, probs,\
-                    rf_model):
+                    rf_model, predictor_arr):
         '''@rf_filename is the full name of the pickled model (including the path)
             @hazard is the string hazard name (e.g., "wind", "hail", or "tornado") 
             @radius_str is the radius in string form (e.g., "7.5", "15", "30", "39", 
                 or "warning" if trained on warnings)
             @radius_float is the radius in float form (e.g., 7.5, 15.0, 30.0, etc.; 
                 or 0.0 if trained on warnings)
+            @probs is the 2-d np array of probabilities 
             @rf_model is the unpickled RF model used to make predictions 
+            @predictor_arr is the array of predictors (in format 
+                (rows: examples, columns: predictors))
         '''
 
 
@@ -304,22 +307,27 @@ class MLPrediction:
         self.radius_float = radius_float
         self.probs = probs 
         self.rf_model = rf_model 
+        self.predictor_arr = predictor_arr
     
 
         return 
 
 
     @classmethod
-    def create_rf_predictions(cls, specs, grid_obj):
+    def create_rf_predictions(cls, specs, grid_obj, predictor_array):
         '''Factory method for creating RF predictions.
             @specs is a ForecastSpecs object
             @grid_obj is a Grid object
+            @predictor_array is the array of predictors to run through the RF 
+                to make predictions. Format: (rows: examples, columns: predictors)
         '''
 
         #TODO: Might need to add 
 
         zero_probs_2d = np.zeros((grid_obj.ny, grid_obj.nx))
         
+        #Will hold the set of mlp objects over the different hazards and radii 
+        mlp_list = [] 
 
         for hazard in c.final_hazards:
 
@@ -335,19 +343,58 @@ class MLPrediction:
                 rfModel = MLPrediction.load_rf_model(rf_filename) 
                 #Create new MLPrediction object 
                 mlp = MLPrediction(rf_filename, hazard, radius_str, radius_float, \
-                            zero_probs_2d, rfModel)
+                            zero_probs_2d, rfModel, predictor_array)
 
                 #Now, implement instance methods -- TODO 
+                mlp.set_probs(grid_obj)
+
+                #Append to list 
+                mlp_list.append(mlp) 
 
 
+        #Once we have a list of mlp objects, save to netcdf file 
                 
 
-                pass
 
         return 
 
 
-    #TODO Make predictions /Get probabilities 
+    def set_probs(self, curr_grid):
+        '''Sets the final output probabilities based on the instance's attributes
+            @curr_grid is the current Grid object for this situation'''
+
+        one_d_probs = self.rf_model.predict_proba(self.predictor_arr)[:,1] 
+
+        two_d_probs = MLPrediction(one_d_probs, curr_grid.ny, curr_grid.nx) 
+
+        #Set the probs attribute 
+        self.probs = two_d_probs 
+
+        return 
+
+   
+
+    @staticmethod 
+    def save_to_ncdf(list_of_mlps):
+        '''Obtains/saves ncdf files based on a list of MLPrediction objects.
+            @list_of_mlps is the list of MLPrediction objects.
+        '''
+        
+
+        return 
+ 
+    @staticmethod
+    def convert_1d_field_to_2d(one_d_field, ny, nx):
+        '''Maps a 1d field to 2d -- for a given day/forecast
+            @one_d_field is incoming 1-d field (e.g., of probabilities)
+            @ny is the number of y grid points
+            @nx is the number of x grid points
+        '''
+
+        two_d_field = one_d_field.reshape(nY, nX)
+
+
+        return two_d_field
    
     @staticmethod 
     def load_rf_model(filename):
@@ -375,6 +422,37 @@ class MLPrediction:
 
 
         return pkl_filename
+
+
+class FinalNCFile:
+    '''This class handles obtaining the final ncdf file based on a list of MLPrediction objects'''
+
+
+
+    def __init__(self, list_of_mlps, xr ):
+        '''@list_of_mlps is a list of MLPrediction objects needed for the current final netcdf file
+            @xr is the xarray dataset that will be used to construct the final netcdf file'''
+
+        self.list_of_mlps = list_of_mlps
+        self.xr = xr 
+
+        return 
+
+
+    #TODO
+    @classmethod
+    def create_FNCF_from_mlps(cls, mlps_list):
+        ''' Factory method for creating FinalNCFile object from list of MLPrediction objects.
+            @mlps_list is a list of MLPrediction objects.'''
+
+        return 
+
+
+    #TODO:
+    def set_xr(self):
+
+        return 
+
 
 
 class ReportGenerator:
