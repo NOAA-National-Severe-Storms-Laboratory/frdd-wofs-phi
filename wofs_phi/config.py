@@ -15,9 +15,14 @@ mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
-model_save_dir = '/work/ryan.martz/wofs_phi_data/models/wofs_psv2_no_torp'
-validation_dir = '/work/ryan.martz/wofs_phi_data/validation_fcsts/wofs_psv2_no_torp'
-test_dir = '/work/ryan.martz/wofs_phi_data/test_fcsts/wofs_psv2_no_torp'
+plot_in_training = True
+
+train_type = 'obs'
+model_save_dir = '/work/ryan.martz/wofs_phi_data/%s_train/models/wofs_psv2_no_torp' %(train_type)
+validation_dir = '/work/ryan.martz/wofs_phi_data/%s_train/validation_fcsts/wofs_psv2_no_torp' %(train_type)
+test_dir = '/work/ryan.martz/wofs_phi_data/%s_train/test_fcsts/wofs_psv2_no_torp' %(train_type)
+warning_dir = '' #will fill this in when we get around to re making new warnings
+torp_vars_filename = '/work/ryan.martz/wofs_phi_data/%s_train/training_data/predictors/torp_predictors.txt' %(train_type)
 
 #Fraction of data to randomly sample for training
 sample_rate = 0.1 
@@ -49,7 +54,8 @@ ps_thresh = 0.01 #ps objects must have probs greater than or equal to this amoun
 max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
 
 #Amount of time (in minutes) to go back (relative to first PS file) 
-ps_time_to_go_back = 180.0 
+ps_time_to_go_back = 180.0
+ps_wofs_buffer = 0
 
 nan_replace_value = 0.0 #Replace nans in wofs files with this value 
 #NOTE: We were getting nans primarily in mid-level lapse rate, 0-6km shear components, 
@@ -146,8 +152,6 @@ torp_search_minutes = max(torp_prob_change_1, torp_prob_change_2)
 torp_max_time_skip = 10
 
 torp_conv_dists = [15, 30, 45, 60]
-
-torp_vars_filename = '/work/ryan.martz/wofs_phi_data/training_data/predictors/torp_predictors.txt'
 
 torp_max_convs = ["prob","age",torp_prob_change_1_str,torp_prob_change_2_str,"AzShear_max","AzShear_min","AzShear_25th_percentile","AzShear_median","DivShear_max","DivShear_min","DivShear_median","DivShear_75th_percentile","PhiDP_AzGradient_median","PhiDP_DivGradient_min","PhiDP_DivGradient_25th_percentile","PhiDP_DivGradient_median","PhiDP_DivGradient_75th_percentile","PhiDP_Gradient_max","PhiDP_Gradient_min","PhiDP_Gradient_median","PhiDP_MedianFiltered_max","PhiDP_MedianFiltered_min","Reflectivity_MedianFiltered_max","Reflectivity_MedianFiltered_min","SpectrumWidth_MedianFiltered_max","SpectrumWidth_MedianFiltered_min","Zdr_MedianFiltered_max","Zdr_MedianFiltered_min","Zdr_MedianFiltered_median"]
 
