@@ -12,6 +12,10 @@
 #===========================================
 
 
+#NOTE 3/13/24: Needs to use the most recent environment, which
+#can be accessed on the NSSL machines by: 
+#conda activate /work/mflora/miniconda3/envs/wofs-tf
+
 #======================
 # Imports
 #======================
@@ -305,7 +309,7 @@ class MLPrediction:
 
 
     def __init__(self, rf_filename, hazard, time_window, radius_str, radius_float,\
-                     probs, rf_model, predictor_arr):
+                     probs, rf_model, predictor_arr, radius_str_ncdf):
         '''@rf_filename is the full name of the pickled model (including the path)
             @hazard is the string hazard name (e.g., "wind", "hail", or "tornado") 
             @time_window is the length of the forecast time window in minutes 
@@ -317,6 +321,8 @@ class MLPrediction:
             @rf_model is the unpickled RF model used to make predictions 
             @predictor_arr is the array of predictors (in format 
                 (rows: examples, columns: predictors))
+            @radius_str_ncdf is the radius in string format for the variables in the 
+                netcdf files 
         '''
 
 
@@ -328,7 +334,7 @@ class MLPrediction:
         self.probs = probs 
         self.rf_model = rf_model 
         self.predictor_arr = predictor_arr
-    
+        self.radius_str_ncdf = radius_str_ncdf
 
         return 
 
@@ -353,6 +359,7 @@ class MLPrediction:
             for r in range(len(c.obs_radii_str)):
                 radius_str = c.obs_radii_str[r]
                 radius_float = c.obs_radii_float[r] 
+                radius_str_ncdf = c.final_str_obs_radii[r] 
 
                 #Get filename 
                 rf_filename = MLPrediction.get_rf_filename(specs.forecast_window,\
@@ -362,7 +369,7 @@ class MLPrediction:
                 rfModel = MLPrediction.load_rf_model(rf_filename) 
                 #Create new MLPrediction object 
                 mlp = MLPrediction(rf_filename, hazard, specs.forecast_window, radius_str, radius_float, \
-                            zero_probs_2d, rfModel, predictor_array)
+                            zero_probs_2d, rfModel, predictor_array, radius_str_ncdf)
 
                 #Set the probabilities 
                 mlp.set_probs(grid_obj)
@@ -554,7 +561,7 @@ class FinalNCFile:
     def save_ncdf(self):
 
         #from wofs.post.utils import save_dataset #save_dataset(filename, xarray_data)
-        full_outname = "%s/%s" %(c.ncdf_save_dir, self.outname) 
+        full_outname = "%s/%s/%s" %(c.ncdf_save_dir, c.mode, self.outname) 
 
         save_dataset(full_outname, self.xr) 
 
@@ -568,7 +575,7 @@ class FinalNCFile:
             based on a given MLPrediction object.'''
 
         varName = "wofsphi__%s__%skm__%smin" %(mlp_object.hazard, \
-            mlp_object.radius_str, mlp_object.time_window)
+            mlp_object.radius_str_ncdf, mlp_object.time_window)
 
 
         return varName
