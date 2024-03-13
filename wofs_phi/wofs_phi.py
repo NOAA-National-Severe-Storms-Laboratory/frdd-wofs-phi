@@ -6,6 +6,7 @@
 #
 #
 # Created by Eric Loken, 2/6/2024
+# Contributions by Ryan Martz 
 #
 #
 #===========================================
@@ -51,6 +52,15 @@ import xarray as xr
 import config as c
 import utilities
 import predictor_extractor as pex
+#from utilities import remove_reserved_keys
+
+_wofs = '/home/monte.flora/python_packages/frdd-wofs-post'
+
+sys.path.insert(0, _wofs)
+from wofs.common import remove_reserved_keys
+from wofs.common.zarr import open_dataset
+from wofs.post.utils import save_dataset #save_dataset(filename, xarray_data)
+
 
 class MLGenerator: 
     ''' This class will handle the ML generator functions. '''
@@ -280,15 +290,36 @@ class MLGenerator:
 
         return use_fname
 
+    @staticmethod 
+    def get_ncdf_outname(fSpecs):
+        '''Returns the netcdf filename that we will use to save the output 
+            probabilities.
+            @fSpecs is the ForecastSpecs object. '''
+
+
+        #Needed: wofs init, ps init, date (based on wofs initialization),  
+        #start valid, end valid 
+
+        #Find what date should be included. 
+        use_date, __ = ForecastSpecs.dattime_to_str(fSpecs.wofs_init_time_dt)
+
+
+        nc_name = "wofs_PHI_%s_%s_%s_%s_%s.nc" %(fSpecs.wofs_init_time, \
+            fSpecs.ps_init_time, use_date, fSpecs.start_valid, fSpecs.end_valid)
+
+
+        return nc_name
+
 
 class MLPrediction:
     ''' This class handles the ML prediction'''
 
 
-    def __init__(self, rf_filename, hazard, radius_str, radius_float, probs,\
-                    rf_model, predictor_arr):
+    def __init__(self, rf_filename, hazard, time_window, radius_str, radius_float,\
+                     probs, rf_model, predictor_arr):
         '''@rf_filename is the full name of the pickled model (including the path)
             @hazard is the string hazard name (e.g., "wind", "hail", or "tornado") 
+            @time_window is the length of the forecast time window in minutes 
             @radius_str is the radius in string form (e.g., "7.5", "15", "30", "39", 
                 or "warning" if trained on warnings)
             @radius_float is the radius in float form (e.g., 7.5, 15.0, 30.0, etc.; 
@@ -322,8 +353,6 @@ class MLPrediction:
                 to make predictions. Format: (rows: examples, columns: predictors)
         '''
 
-        #TODO: Might need to add 
-
         zero_probs_2d = np.zeros((grid_obj.ny, grid_obj.nx))
         
         #Will hold the set of mlp objects over the different hazards and radii 
@@ -342,10 +371,10 @@ class MLPrediction:
 
                 rfModel = MLPrediction.load_rf_model(rf_filename) 
                 #Create new MLPrediction object 
-                mlp = MLPrediction(rf_filename, hazard, radius_str, radius_float, \
+                mlp = MLPrediction(rf_filename, hazard, specs.forecast_window, radius_str, radius_float, \
                             zero_probs_2d, rfModel, predictor_array)
 
-                #Now, implement instance methods -- TODO 
+                #Set the probabilities 
                 mlp.set_probs(grid_obj)
 
                 #Append to list 
@@ -353,6 +382,7 @@ class MLPrediction:
 
 
         #Once we have a list of mlp objects, save to netcdf file 
+        FinalNCFile.create_final_ncdf_from_mlps(mlp_list, specs, grid_obj) 
                 
 
 
@@ -365,7 +395,8 @@ class MLPrediction:
 
         one_d_probs = self.rf_model.predict_proba(self.predictor_arr)[:,1] 
 
-        two_d_probs = MLPrediction(one_d_probs, curr_grid.ny, curr_grid.nx) 
+        two_d_probs = MLPrediction.convert_1d_field_to_2d(\
+                            one_d_probs, curr_grid.ny, curr_grid.nx) 
 
         #Set the probs attribute 
         self.probs = two_d_probs 
@@ -373,15 +404,6 @@ class MLPrediction:
         return 
 
    
-
-    @staticmethod 
-    def save_to_ncdf(list_of_mlps):
-        '''Obtains/saves ncdf files based on a list of MLPrediction objects.
-            @list_of_mlps is the list of MLPrediction objects.
-        '''
-        
-
-        return 
  
     @staticmethod
     def convert_1d_field_to_2d(one_d_field, ny, nx):
@@ -391,20 +413,20 @@ class MLPrediction:
             @nx is the number of x grid points
         '''
 
-        two_d_field = one_d_field.reshape(nY, nX)
+        two_d_field = one_d_field.reshape(ny, nx)
 
 
         return two_d_field
    
     @staticmethod 
-    def load_rf_model(filename):
+    def load_rf_model(pkl_filename):
         '''Loads given pkl file (@filename) into an array'''
 
-        f = open(Filename, 'rb')
+        f = open(pkl_filename, 'rb')
         new = pickle.load(f)
         f.close()
 
-    return new
+        return new
 
 
 
@@ -429,30 +451,95 @@ class FinalNCFile:
 
 
 
-    def __init__(self, list_of_mlps, xr ):
+    def __init__(self, list_of_mlps, xr_list, outname):
         '''@list_of_mlps is a list of MLPrediction objects needed for the current final netcdf file
-            @xr is the xarray dataset that will be used to construct the final netcdf file'''
+            @xr_list is a list of xarray datasets that will be used to construct the final netcdf file
+            @outname is the name of the ncdf output file '''
+
 
         self.list_of_mlps = list_of_mlps
-        self.xr = xr 
+        self.xr_list = xr_list
+        self.outname = outname
 
         return 
 
 
-    #TODO
     @classmethod
-    def create_FNCF_from_mlps(cls, mlps_list):
+    def create_final_ncdf_from_mlps(cls, mlps_list, fcstSpecs, gridObject):
         ''' Factory method for creating FinalNCFile object from list of MLPrediction objects.
-            @mlps_list is a list of MLPrediction objects.'''
+            @mlps_list is a list of MLPrediction objects.
+            @fcstSpecs is a ForecastSpecs object
+            @gridObject is a Grid object'''
+
+       
+        #Find the ncdf outname 
+        nc_outname = MLGenerator.get_ncdf_outname(fcstSpecs) 
+
+        #Create an initial FinalNCFile object
+        nc_file_obj = FinalNCFile(mlps_list, [], nc_outname) 
+
+        #Set the xr_list 
+        nc_file_obj.set_xr_list(gridObject) 
 
         return 
 
 
     #TODO:
-    def set_xr(self):
+    def set_xr_list(self, grid_obj):
+        '''Sets the xr_list attribute
+            @grid_obj is a Grid object'''
+
+        xrList = []         
+
+        for x in range(len(self.list_of_mlps)):
+            mlp_obj = self.list_of_mlps[x] 
+            
+            #Create variable name 
+            var_name =  FinalNCFile.get_nc_var_name(mlp_obj)
+    
+            new_xr = xr.Dataset(data_vars=None, coords={"y": (range(grid_obj.ny)), \
+                        "x": (range(grid_obj.nx))})
+
+            new_xr[var_name] = (["y", "x"], mlp_obj.probs)
+
+            print (new_xr) 
+
+            #Append to list 
+            xrList.append(new_xr) 
+
+        #Set the instance attribute 
+        self.xr_list = xrList
+
+        #Add the wofs metadata to each element of xr_list
+        self.add_metadata_to_xr_list() 
+
 
         return 
 
+
+    #TODO: is this how we want to do it? 
+    def add_metadata_to_xr_list(self):
+        
+
+        return 
+
+
+    #TODO
+    def save_ncdf(self):
+
+        return 
+
+    
+    @staticmethod
+    def get_nc_var_name(mlp_object):
+        '''Returns the variable name (in the xarray and eventually the ncdf file
+            based on a given MLPrediction object.'''
+
+        varName = "wofsphi__%s__%skm__%smin" %(mlp_object.hazard, \
+            mlp_object.radius_str, mlp_object.time_window)
+
+
+        return varName
 
 
 class ReportGenerator:
@@ -1180,7 +1267,42 @@ class Wofs:
         #Create new wofs object that holds the xarray 
         wofs_obj = Wofs(wofs_xr) 
 
+        #Add wofs metadata
+        wofs_obj.add_wofs_metadata(wofs_path, wofs_files[0]) 
+
         return wofs_obj
+
+    def add_wofs_metadata(self, wofsPath, wofsFile):
+        '''Adds the wofs metadata based on the xarr attribute and a wofs summary file
+            @wofsPath is the path to the wofs summary file 
+            @wofsFile is the name of the wofs summary file 
+        '''
+
+
+        #Load dataset into an xarray
+        try:
+            full_file = "%s/%s" %(wofsPath, wofsFile)
+            tmp_data = open_dataset(full_file, decode_times=False) 
+        except FileNotFoundError:
+            #try converting to legacy filename if ALL file isn't found 
+            legacy_name = wofsFile.replace("ALL", "ENV") 
+            full_file = "%s/%s" %(wofsPath, legacy_name)
+            tmp_data = open_dataset(full_file, decode_times=False) 
+            
+    
+        #Modify the existing xarray attribute
+        self.xarr['xlat'] = tmp_data['xlat']
+        self.xarr['xlat'].attrs = remove_reserved_keys(tmp_data['xlat'].attrs)
+
+        self.xarr['xlon'] = tmp_data['xlon']
+        self.xarr['xlon'].attrs = remove_reserved_keys(tmp_data['xlon'].attrs)
+
+        #copy global attributes 
+        self.xarr.attrs = remove_reserved_keys(tmp_data.attrs)
+
+
+
+        return 
 
 
     @staticmethod 
