@@ -15,9 +15,8 @@
 mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
-
-#is_train_mode = True
-is_train_mode = False
+is_train_mode = True
+#is_train_mode = False
 
 plot_in_training = True
 num_training_vars = 269

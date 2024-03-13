@@ -514,10 +514,14 @@ def create_forecast_mode_training():
 
     report_radius = 39
 
-    training_init_times = ["1700", "1730", "1800", "1830", "1900",\
-        "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
-        "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
-    training_init_times = training_init_times[6:]
+    #training_init_times = ["1700", "1730", "1800", "1830", "1900",\
+    #    "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
+    #    "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
+    #training_init_times = training_init_times[6:]
+
+    #training_init_times = ["1900", "2000"] 
+    training_init_times = ["2000"] 
+    dates = ["20190626"] 
 
     #training_init_times = ["2300"]
     #These are the most important right now: 

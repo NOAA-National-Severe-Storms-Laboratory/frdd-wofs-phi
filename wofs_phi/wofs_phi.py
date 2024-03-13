@@ -988,7 +988,15 @@ class ReportGenerator:
 
         '''
 
-        reps_df = pd.read_csv(coordsFile, names=header_names, dtype='float32', header=None)
+        #reps_df = pd.read_csv(coordsFile, names=header_names, dtype='float32', header=None)
+
+        try: 
+            reps_df = pd.read_csv(coordsFile, sep=',', dtype='float32', header=None)
+            reps_df.columns = header_names
+        except pd.errors.EmptyDataError:
+            #If data is empty, return an empty dataframe with the appropriate column names 
+            #df=pd.DataFrame(columns=['a'])
+            reps_df = pd.DataFrame(columns=header_names)
 
         return reps_df 
 
@@ -1269,7 +1277,7 @@ class MLTrainer:
         start_str = start_dt.strftime('%Y%m%d-%H%M').split('-')[1]
         end_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
         
-        if c.train_type == 'obs:
+        if c.train_type == 'obs':
             full_npy_fname = '%s/%s_reps1d_%s_v%s-%s_r%skm.npy' %(c.train_obs_full_npy_dir, self.hazard, day_str, start_str, end_str, str(r))
             if full_npy == True:
                 return full_npy_fname
@@ -2230,39 +2238,42 @@ class PS_WoFS:
             5. Smallest extrapolation 
 
         '''
-        #First need to filter/rename the columns on geodataframe 
-        hazard_gdf = PS_WoFS.filter_and_rename_gdf(self.hazard, geodf) 
+       
+        if (len(points_to_change) > 0): 
 
-        #Apply the probability threshold 
-        hazard_gdf = PS_WoFS.threshold_probability(hazard_gdf, c.ps_thresh)
+            #First need to filter/rename the columns on geodataframe 
+            hazard_gdf = PS_WoFS.filter_and_rename_gdf(self.hazard, geodf) 
+
+            #Apply the probability threshold 
+            hazard_gdf = PS_WoFS.threshold_probability(hazard_gdf, c.ps_thresh)
     
-        #Do the assignments/updates -- do point by point
-        for l in range(len(points_to_change)): 
-            y = points_to_change['wofs_j'].iloc[l]
-            x = points_to_change['wofs_i'].iloc[l]
+            #Do the assignments/updates -- do point by point
+            for l in range(len(points_to_change)): 
+                y = points_to_change['wofs_j'].iloc[l]
+                x = points_to_change['wofs_i'].iloc[l]
 
-            df_subset = hazard_gdf.loc[(hazard_gdf['wofs_j'] == y) & (hazard_gdf['wofs_i'] == x)]
-            df_subset_sorted = df_subset.sort_values(['prob', 'fourteen_change', 'thirty_change', 'age', 't'], \
+                df_subset = hazard_gdf.loc[(hazard_gdf['wofs_j'] == y) & (hazard_gdf['wofs_i'] == x)]
+                df_subset_sorted = df_subset.sort_values(['prob', 'fourteen_change', 'thirty_change', 'age', 't'], \
                                         ascending=[False, False, False, False, True])
 
-            if (len(df_subset_sorted) > 0):
-                maxValue = df_subset_sorted.iloc[0,:]
+                if (len(df_subset_sorted) > 0):
+                    maxValue = df_subset_sorted.iloc[0,:]
             
-                #Update the object. 
-                #How do we want to assign a value? Want all values coming from the same storm
-                #1. Highest Prob
-                #2. Greatest 14-min (positive) change
-                #3. Greatest 30-min (positive) change
-                #4. Oldest storm
-                #5. Smallest extrapolation 
-                self.probs[y,x] = maxValue['prob']
-                self.ages[y,x] = maxValue['age'] 
-                self.lead_times[y,x] = maxValue['t']
-                self.fourteen_change[y,x] = maxValue['fourteen_change'] 
-                self.thirty_change[y,x] = maxValue['thirty_change'] 
+                    #Update the object. 
+                    #How do we want to assign a value? Want all values coming from the same storm
+                    #1. Highest Prob
+                    #2. Greatest 14-min (positive) change
+                    #3. Greatest 30-min (positive) change
+                    #4. Oldest storm
+                    #5. Smallest extrapolation 
+                    self.probs[y,x] = maxValue['prob']
+                    self.ages[y,x] = maxValue['age'] 
+                    self.lead_times[y,x] = maxValue['t']
+                    self.fourteen_change[y,x] = maxValue['fourteen_change'] 
+                    self.thirty_change[y,x] = maxValue['thirty_change'] 
 
-        #Next, at the end we need to compute the smoothed prob field 
-        self.update_smoothed_probs()
+            #Next, at the end we need to compute the smoothed prob field 
+            self.update_smoothed_probs()
 
 
         return 
@@ -2303,6 +2314,9 @@ class PS:
 
     #List of variables to extract from current probsevere files 
     CURR_PS_VARIABLES = ["id", "hail_prob", "torn_prob", "wind_prob", "east_motion", "south_motion", "points"]
+    ALL_EXTRAP_DF_KEYS = ['wofs_j', 'wofs_i', 't', 'hail_prob', 'torn_prob', 'wind_prob', 'age',
+       'fourteen_change_hail', 'fourteen_change_torn', 'fourteen_change_wind',
+       'thirty_change_hail', 'thirty_change_torn', 'thirty_change_wind']
 
     #Buffer to add around wofs points in m. 2.15km guarantees that we cover the full grid cell
     WOFS_BUFFER = 2.15*10**3 
@@ -2359,7 +2373,10 @@ class PS:
         merged_gdf = buffered_wofs_gdf.sjoin(ps_gdf, how='inner', predicate='intersects')
 
         #Do the extrapolation 
-        extrapolated_gdf = PS.do_extrapolation(past_ps_df, merged_gdf, specs)
+        #NOTE: extrapolated_gdf is actually just a pandas Dataframe, not a geopandas
+        #dataframe by the end of this method. That's fine though, since we only really
+        #need the wofs_j and wofs_i points, which we still have
+        extrapolated_gdf = PS.do_extrapolation(past_ps_df, merged_gdf, specs, cls.ALL_EXTRAP_DF_KEYS)
 
         #Restrict lead times to relevant (e.g., 30-min) period 
         extrapolated_gdf = PS.filter_lead_time(extrapolated_gdf, specs) 
@@ -2498,14 +2515,18 @@ class PS:
             @in_gdf is the incoming geodataframe where each row is an example
             @fcst_specs is a ForecastSpecs object for the current case
         '''
-   
-        #self.ps_lead_time_start = ps_lead_time_start
-        #self.ps_lead_time_end
-        subset_gdf = in_gdf.loc[(in_gdf['t'] >= fcst_specs.ps_lead_time_start) & \
+
+        subset_gdf = copy.deepcopy(in_gdf) 
+
+        #Return the original geodataframe if it is empty. i.e., Only proceed if
+        #it's nonempty
+  
+        if (len(in_gdf) > 0): 
+            subset_gdf = in_gdf.loc[(in_gdf['t'] >= fcst_specs.ps_lead_time_start) & \
                         (in_gdf['t'] <= fcst_specs.ps_lead_time_end)]
 
-        #Drop duplicates
-        subset_gdf.drop_duplicates(keep='first', inplace=True, ignore_index=True) 
+            #Drop duplicates
+            subset_gdf.drop_duplicates(keep='first', inplace=True, ignore_index=True) 
 
  
 
@@ -2513,19 +2534,23 @@ class PS:
 
 
     @staticmethod
-    def do_extrapolation(prev_ps_df, curr_gdf, fcst_specs):
+    def do_extrapolation(prev_ps_df, curr_gdf, fcst_specs, df_column_names):
         ''' This method creates/returns a "final" geopandas dataframe with all relevant PS 
             attriutes/predictors over the relevant time period for all PS objects in wofs
             domain
             @prev_ps_df is the dataframe of past PS objects
             @curr_gdf is the merged "WoFS/PS geopandas dataframe. 
             @fcst_specs is a ForecastSpecs object for the current situation.
+            @df_column_names is a list of column names that the final dataframe 
+                will have. We need this to return the appropriate dataframe when 
+                the length of @curr_gdf is 0
         '''
 
         #If there are no objects, then there's nothing to apply the extrapolation to
         if (len(curr_gdf) == 0):
-            output_gdf = curr_gdf.copy(deep=True)
-
+            #output_gdf = curr_gdf.copy(deep=True)
+            #TODO: Need to put in the relevant column names
+            output_gdf = pd.DataFrame(columns=df_column_names) 
 
         else: 
 
