@@ -23,10 +23,15 @@ model_save_dir = '../models'
 #rf_dir = "/work/ryan.martz/wofs_phi_data/models/wofs_psv2_no_torp/hail/wofslag_25/length_60"
 rf_dir = "/work/eric.loken/wofs/2024_update/SFE2024/rf_models"
 
+#Path where to save the ncdf files 
+#ncdf_save_dir = "/work/eric.loken/wofs/2024_update/SFE2024/ncdf_files"
+ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
+
 #May or may not eventually use these
 generate_forecasts = True 
-
 generate_reports = True 
+
+plot_forecasts = False
 
 #Buffer time for a report in minutes: 
 #i.e., consider reports within this many minutes of the valid period
@@ -98,10 +103,10 @@ predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially 
 extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 
 #obs_radii_str = ["30.0", "15.0", "7.5", "39.0"]
-obs_radii_str = ["0", "39.0", "30.0", "15.0", "7.5"] 
-obs_radii_float = [0, 39, 30, 15, 7.5]
+obs_radii_str = ["39.0", "30.0", "15.0", "7.5"] 
+obs_radii_float = [39, 30, 15, 7.5]
 #final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
-final_str_obs_radii = ["0", "39", "30","15", "7_5"] #form to use for final ncdf files
+final_str_obs_radii = ["39", "30","15", "7_5"] #form to use for final ncdf files
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
 wofs_fields_file = "standard_wofs_variables.txt"
@@ -131,7 +136,9 @@ all_wofs_init_times = ["1700", "1730", "1800", "1830", "1900", "1930", "2000", "
                         "2130", "2200", "2230", "2300", "2330", "0000", "0030", "0100", "0130",\
                         "0200", "0230", "0300", "0330", "0400", "0430", "0500", "0530", "0600"]
 
-next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500"]
+next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500",\
+                    "0530", "0600", "0630", "0700", "0730", "0800", "0830", "0900", "0930", "1000", \
+                    "1030", "1100", "1130"]
 
 next_day_times = ["0000", "0005", "0010", "0015", "0020", "0025", "0030",\
                     "0030", "0035", "0040","0045", "0050", "0055",\

@@ -177,22 +177,11 @@ class MLGenerator:
 
                 #NOTE: All radii and hazards will go into the same ncdf file 
 
-                MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array) 
+                MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array, wofs.xarr) 
+                if (c.plot_forecasts == True):
+                    #Plot the forecasts to png 
 
-                #Get RF filenames
-                #rf_filenames = MLGenerator.get_rf_filenames(forecast_specs.forecast_window)
-                #print (rf_filenames) 
-
-                #Load RFs
-
-
-                #Get predictions (for each hazard) 
-
-                
-
-                #Save predictions to ncdf 
-
-                pass
+                    pass
 
 
         #Get the reports if we're supposed to 
@@ -345,12 +334,13 @@ class MLPrediction:
 
 
     @classmethod
-    def create_rf_predictions(cls, specs, grid_obj, predictor_array):
+    def create_rf_predictions(cls, specs, grid_obj, predictor_array, wofs_xarr):
         '''Factory method for creating RF predictions.
             @specs is a ForecastSpecs object
             @grid_obj is a Grid object
             @predictor_array is the array of predictors to run through the RF 
                 to make predictions. Format: (rows: examples, columns: predictors)
+            @wofs_xarr is the wofs xarray with the metadata added 
         '''
 
         zero_probs_2d = np.zeros((grid_obj.ny, grid_obj.nx))
@@ -382,7 +372,7 @@ class MLPrediction:
 
 
         #Once we have a list of mlp objects, save to netcdf file 
-        FinalNCFile.create_final_ncdf_from_mlps(mlp_list, specs, grid_obj) 
+        FinalNCFile.create_final_ncdf_from_mlps(mlp_list, specs, grid_obj, wofs_xarr) 
                 
 
 
@@ -451,43 +441,73 @@ class FinalNCFile:
 
 
 
-    def __init__(self, list_of_mlps, xr_list, outname):
+    def __init__(self, list_of_mlps, xr_list, outname, xr):
         '''@list_of_mlps is a list of MLPrediction objects needed for the current final netcdf file
             @xr_list is a list of xarray datasets that will be used to construct the final netcdf file
-            @outname is the name of the ncdf output file '''
+            @outname is the name of the ncdf output file 
+            @xr is the combined xarray dataset: i.e., all elements of the xr_list'''
 
 
         self.list_of_mlps = list_of_mlps
         self.xr_list = xr_list
         self.outname = outname
+        self.xr = xr
 
         return 
 
 
     @classmethod
-    def create_final_ncdf_from_mlps(cls, mlps_list, fcstSpecs, gridObject):
+    def create_final_ncdf_from_mlps(cls, mlps_list, fcstSpecs, gridObject, wofsXR):
         ''' Factory method for creating FinalNCFile object from list of MLPrediction objects.
             @mlps_list is a list of MLPrediction objects.
             @fcstSpecs is a ForecastSpecs object
-            @gridObject is a Grid object'''
+            @gridObject is a Grid object
+            @wofsXR is a wofs xarray dataset with the metadata added'''
 
        
         #Find the ncdf outname 
         nc_outname = MLGenerator.get_ncdf_outname(fcstSpecs) 
 
+        #Initial empty xr dataset 
+        initial_xr = xr.Dataset(data_vars=None, coords={"y": (range(gridObject.ny)), \
+                        "x": (range(gridObject.nx))})
+
         #Create an initial FinalNCFile object
-        nc_file_obj = FinalNCFile(mlps_list, [], nc_outname) 
+        nc_file_obj = FinalNCFile(mlps_list, [], nc_outname, initial_xr) 
 
         #Set the xr_list 
         nc_file_obj.set_xr_list(gridObject) 
 
+        #Set the overall xr 
+        nc_file_obj.set_xr()
+
+        #Add the metadata
+        nc_file_obj.add_metadata_to_xr(wofsXR)
+
+        print (nc_file_obj.xr) 
+
+        #Save to netcdf file 
+        nc_file_obj.save_ncdf()
+
+
         return 
 
 
-    #TODO:
+    def set_xr(self):
+        ''' Sets the overall xarray (xr) attribute based on the list of xarrays
+                (xr_list)
+            #Basically concatenates all elements of xr_list to xr 
+        '''
+
+        self.xr = xr.merge([x for x in self.xr_list])
+        
+
+        return 
+
     def set_xr_list(self, grid_obj):
         '''Sets the xr_list attribute
-            @grid_obj is a Grid object'''
+            @grid_obj is a Grid object
+            @wofs_xarray is an xarray dataset with the wofs metadata added'''
 
         xrList = []         
 
@@ -502,30 +522,42 @@ class FinalNCFile:
 
             new_xr[var_name] = (["y", "x"], mlp_obj.probs)
 
-            print (new_xr) 
-
             #Append to list 
             xrList.append(new_xr) 
 
         #Set the instance attribute 
         self.xr_list = xrList
 
-        #Add the wofs metadata to each element of xr_list
-        self.add_metadata_to_xr_list() 
-
 
         return 
 
 
-    #TODO: is this how we want to do it? 
-    def add_metadata_to_xr_list(self):
-        
+    #TODO: Modify this function so we only add the metadata at the very end 
+    def add_metadata_to_xr(self, sample_xarr):
+        '''Adds wofs metadata to the xr attribute 
+            @sample_xarr is a sample xarray dataset with the metadata already added
+                e.g., in this case, it will be our wofs data xarray'''    
+   
+        #Modify the existing xarray attribute
+        self.xr['xlat'] = sample_xarr['xlat']
+        self.xr['xlat'].attrs = remove_reserved_keys(sample_xarr['xlat'].attrs)
+
+        self.xr['xlon'] = sample_xarr['xlon']
+        self.xr['xlon'].attrs = remove_reserved_keys(sample_xarr['xlon'].attrs)
+
+        #copy global attributes 
+        self.xr.attrs = remove_reserved_keys(sample_xarr.attrs)
 
         return 
 
 
-    #TODO
     def save_ncdf(self):
+
+        #from wofs.post.utils import save_dataset #save_dataset(filename, xarray_data)
+        full_outname = "%s/%s" %(c.ncdf_save_dir, self.outname) 
+
+        save_dataset(full_outname, self.xr) 
+
 
         return 
 
