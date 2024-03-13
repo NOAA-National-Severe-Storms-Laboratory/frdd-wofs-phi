@@ -56,7 +56,11 @@ import xarray as xr
 import config as c
 import utilities
 import predictor_extractor as pex
-#from utilities import remove_reserved_keys
+
+import warnings
+import cartopy.feature as cfeature
+import cartopy.crs as ccrs
+
 
 _wofs = '/home/monte.flora/python_packages/frdd-wofs-post'
 
@@ -993,13 +997,17 @@ class ReportGenerator:
 class MLTrainer:
     '''This class handles the training of the model'''
     
-    def __init__(self, dates, forecast_length, num_fcsts, num_folds, haz, n_jobs = 36, n_trees = 200, criterion = 'entropy', max_depth = 15, min_samples_leaf = 20,
-                max_features = "sqrt"):
+    GRID_SHAPE_X = 300 #shape to save model probs to x coord
+    GRID_SHAPE_Y = 300 #shape to save model probs to y coord
+    
+    def __init__(self, dates, forecast_length, wofs_lead_time, num_folds, haz, wofs_spinup_time, n_jobs = 36, n_trees = 200, criterion = 'entropy',
+                 max_depth = 15, min_samples_leaf = 20, max_features = "sqrt"):
         self.dates = dates #this needs to be in a list of date strings (YYYYMMDD)
         self.forecast_length = forecast_length
-        self.num_fcsts = num_fcsts
+        self.lead_time = wofs_lead_time
         self.num_folds = num_folds
         self.hazard = haz
+        self.wofs_spinup_time = wofs_spinup_time
         
         #RF variables/hyperparameters as optional inputs:
         self.n_jobs = n_jobs
@@ -1012,101 +1020,267 @@ class MLTrainer:
     def do_training_observations(self):
         '''Will do the training, run on validation and map probs to success ratios, then run on testing data with the mapped SRs'''
         
-        inits = c.top_hour_inits.extend(c.bottom_hour_inits)
+        self.inits = c.top_hour_inits
+        self.inits.extend(c.bottom_hour_inits)
         self.set_chunk_splits()
         #TODO: get txt files of all variable names
         #self.wofs_vars = 
         #self.ps_vars = 
         #self.torp_vars = 
         #self.n_vars = len(self.wofs_vars) + len(self.ps_vars)
-        train_start_ind = 0
-        train_end_ind = self.num_folds - 3
         val_ind = self.num_folds - 2
         test_ind = self.num_folds - 1
-        for r in c.obs_radii:
-            for k in range(num_folds):
+        for r in ['30.0']:#c.obs_radii:
+            for k in range(self.num_folds):
+                print('fold: ', k+1)
                 self.save_model(k, r)
-                #self.run_on_validation()
-                #self.save_test_predictions()
+                self.run_on_validation(k, r)
+                self.save_test_predictions(k, r, plotting = True)
     
     def save_model(self, fold, r):
         '''Trains and saves a single model (one hazard, forecast window, fold, radius)'''
         
         fold_train_dates = self.date_train_folds[fold]
-        for i in range(self.num_fcsts):
-            for date in fold_train_dates:
-                for init in inits:
-                    init_dt = utilities.make_dt_from_str(date, init)
-                    start_dt = init_dt + datetime.timedelta(seconds = ((c.wofs_spinup_time*60) + (self.forecast_length*i*60)))
-                    end_dt = start_dt + datetime.timedelta(seconds = forecast_length*60)
-                    predictor_fname, fcst_specs = self.get_predictors_fname(init_dt, start_dt, end_dt)
-                    if predictor_fname == '':
-                        continue
-                    os.system('cat %s >> ./training_fdata_%s_%smin_w%s_r%skm.dat' %(predictor_fname, self.hazard, self.forecast_length, str(i+1), str(r)))
-                    obs_fname = self.get_events_fname(start_dt, end_dt)
-                    os.system('cat %s >> ./training_odata_%s_%smin_w%s_r%skm.dat' %(obs_fname, self.hazard, self.forecast_length, str(i+1), str(r)))
-            
-            forecast_file = './training_fdata_%s_%smin_w%s_r%skm.dat' %(self.hazard, self.forecast_length, str(i+1), str(r))
-            obs_file = './training_odata_%s_%smin_w%s_r%skm.dat' %(self.hazard, self.forecast_length, str(i+1), str(r))
+        all_filenames = []
+        for date in fold_train_dates:
+            print(date)
+            for init in self.inits:
+                init_dt = utilities.make_dt_from_str(date, init)
+                if init_dt.hour < c.wofs_reset_hour:
+                    real_init_dt = init_dt + timedelta(days=1)
+                else:
+                    real_init_dt = init_dt
+                spinup_dt = real_init_dt + dt.timedelta(seconds = (self.wofs_spinup_time*60))
+                start_dt = real_init_dt + dt.timedelta(seconds = (self.lead_time*60))
+                end_dt = start_dt + dt.timedelta(seconds = forecast_length*60)
+                arr = self.get_predictors_fname(init_dt, spinup_dt, start_dt, end_dt)
+                if arr[0] == '':
+                    continue
+                #get predictors returns array length 1 if there are no filenames, returns length 2 if there are (length 2 being the fcst_specs)
+                predictor_fname = arr[0]
+                fcst_specs = arr[1]
+                try:
+                    obs_fname = self.get_events_fname(init_dt, start_dt, end_dt, r, fcst_specs)
+                except:
+                    #no obs
+                    continue
+                #these two filenames dont really matter as they get deleted right away
+                os.system('cat %s >> ./training_fdata_%s_%smin_r%skm.dat' %(predictor_fname, self.hazard, self.forecast_length, str(r)))
+                os.system('cat %s >> ./training_odata_%s_%smin_r%skm.dat' %(obs_fname, self.hazard, self.forecast_length, str(r)))
+        
+        #these two filenames dont really matter as they get deleted right away
+        forecast_file = './training_fdata_%s_%smin_r%skm.dat' %(self.hazard, self.forecast_length, str(r))
+        obs_file = './training_odata_%s_%smin_r%skm.dat' %(self.hazard, self.forecast_length, str(r))
 
-            training_x = self.read_binary(forecast_file)
-            training_y = self.read_obs_binary(obs_file)
-
-            clf = RandomForestClassifier(n_jobs = self.n_jobs, n_estimators = self.n_trees, criterion = self.criterion, max_depth = self.max_depth,
-                                         min_samples_leaf = self.min_samples_leaf, max_features = self.max_features)
-            clf.fit(training_x, training_y)
-
-            clf_filename = '%s/%s/wofsphi_%s_%smin_w%s_r%skm_fold%s.pkl' %(c.model_save_dir, self.hazard, self.hazard, self.forecast_length, str(i+1), str(r), fold)
-                    
-            clf_pkl = open(clf_filename, 'wb')
-            pickle.dump(clf, clf_pkl)
-            clf_pkl.close()
-            
-            os.system('rm %s' %(forecast_file))
-            os.system('rm %s' %(obs_file))
+        training_x = self.read_binary(forecast_file)
+        training_y = self.read_obs_binary(obs_file)
+        
+        os.system('rm %s' %(forecast_file))
+        os.system('rm %s' %(obs_file))
+        
+        clf = RandomForestClassifier(n_jobs = self.n_jobs, n_estimators = self.n_trees, criterion = self.criterion, max_depth = self.max_depth,
+                                     min_samples_leaf = self.min_samples_leaf, max_features = self.max_features)
+        clf.fit(training_x, training_y)
+        
+        clf_save_dir = '%s/%s/wofslag_%s/length_%s' %(c.model_save_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
+        clf_filename = 'wofsphi_%s_%smin_window%s-%s_r%skm_fold%s.pkl' %(self.hazard, self.forecast_length, self.lead_time, self.lead_time + self.forecast_length, r, fold)
+        MLTrainer.save_data(clf_save_dir, clf_filename, clf, 'pkl')
     
-    def get_predictors_fname(self, init_dt, start_dt, end_dt):
+    def run_on_validation(self, fold, r):
+        fold_val_dates = self.date_val_folds[fold]
+        save_dir = '%s/%s/wofslag_%s/length_%s' %(c.validation_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
+        all_probs_save_dir = '%s/all_raw_probs_fold%s' %(save_dir, fold)
+        
+        clf_save_dir = '%s/%s/wofslag_%s/length_%s' %(c.model_save_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
+        clf_filename = 'wofsphi_%s_%smin_window%s-%s_r%skm_fold%s.pkl' %(self.hazard, self.forecast_length, self.lead_time, self.lead_time + self.forecast_length, r, fold)
+        
+        start_min = self.lead_time
+        end_min = self.lead_time + self.forecast_length
+        all_probs = []
+        all_events = []
+        model = pickle.load(open('%s/%s' %(clf_save_dir, clf_filename), 'rb'))
+        for date in fold_val_dates:
+            for init in self.inits:
+                init_dt = utilities.make_dt_from_str(date, init)
+                if init_dt.hour < c.wofs_reset_hour:
+                    real_init_dt = init_dt + timedelta(days=1)
+                else:
+                    real_init_dt = init_dt
+                probs_1d, obs = self.get_probs(model, r, date, real_init_dt, save_dir, do_saving = True)
+                if probs_1d == [] or obs == []:
+                    continue
+                all_probs.extend(probs_1d)
+                all_events.extend(obs)
+        
+        all_probs = np.array(all_probs)
+        all_events = np.array(all_events)
+        all_probs_fname = 'all_rf_%s_raw_probs_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
+        MLTrainer.save_data(all_probs_save_dir, all_probs_fname, all_probs, 'npy')
+        all_events_fname = 'all_%s_events_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
+        MLTrainer.save_data(all_probs_save_dir, all_events_fname, all_events, 'npy')
+        
+        thresholds = np.round(np.arange(0,1.01,0.01), 2)
+        srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
+        df = pd.DataFrame({'raw_prob': thresholds, 'SR': srs})
+        sr_map_fname = 'sr_map_%s_spinup%smin_length%smin_%s-%s_r%skm_fold%s.csv' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
+        MLTrainer.save_data(all_probs_save_dir, sr_map_fname, df, 'csv')
+    
+    def get_probs(self, model, r, date, real_init_dt, save_dir, do_saving = False):
+        if real_init_dt.hour < c.wofs_reset_hour:
+            init_dt = real_init_dt - timedelta(days=1)
+        else:
+            init_dt = real_init_dt
+        spinup_dt = real_init_dt + dt.timedelta(seconds = (self.wofs_spinup_time*60))
+        start_dt = real_init_dt + dt.timedelta(seconds = (self.lead_time*60))
+        end_dt = start_dt + dt.timedelta(seconds = forecast_length*60)
+        arr = self.get_predictors_fname(init_dt, spinup_dt, start_dt, end_dt, full_npy = True)
+        if arr[0] == '':
+            return [], []
+        #get predictors returns array length 1 if there are no filenames, returns length 2 if there are (length 2 being the fcst_specs)
+        predictor_fname = arr[0]
+        fcst_specs = arr[1]
+        predictors = np.load(predictor_fname)
+        clf_probs = model.predict_proba(predictors)[:,1]
+        probs_2d = clf_probs.reshape(MLTrainer.GRID_SHAPE_X, MLTrainer.GRID_SHAPE_Y)
+        
+        if do_saving:
+            init_date_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[0]
+            init_time_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[1]
+            start_time_str = start_dt.strftime('%Y%m%d-%H%M').split('-')[1]
+            end_time_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
+            save_file = 'rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.txt' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
+            MLTrainer.save_data(save_dir + '/' + init_date_str, save_file, probs_2d, 'txt')
+        
+        try:
+            obs_fname = self.get_events_fname(init_dt, start_dt, end_dt, r, fcst_specs, full_npy = True)
+            obs = list(np.load(obs_fname))
+        except:
+            #no obs file
+            obs = []
+        
+        return list(clf_probs), obs
+    
+    def save_test_predictions(self, fold, r, plotting = False):
+        fold_test_dates = self.date_test_folds[fold]
+        save_dir = '%s/%s/wofslag_%s/length_%s' %(c.test_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
+        all_srs_save_dir = '%s/fold%s' %(save_dir, fold)
+        sr_map_dir = '%s/%s/wofslag_%s/length_%s/all_raw_probs_fold%s' %(c.validation_dir, self.hazard, self.wofs_spinup_time, self.forecast_length, fold)
+        
+        clf_save_dir = '%s/%s/wofslag_%s/length_%s' %(c.model_save_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
+        clf_filename = 'wofsphi_%s_%smin_window%s-%s_r%skm_fold%s.pkl' %(self.hazard, self.forecast_length, self.lead_time, self.lead_time + self.forecast_length, r, fold)
+        start_min = self.lead_time
+        end_min = self.lead_time + self.forecast_length
+        sr_map_fname = 'sr_map_%s_spinup%smin_length%smin_%s-%s_r%skm_fold%s.csv' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
+        sr_map_df = pd.read_csv('%s/%s' %(sr_map_dir, sr_map_fname))
+        all_srs = []
+        all_events = []
+        model = pickle.load(open('%s/%s' %(clf_save_dir, clf_filename), 'rb'))
+        
+        for date in fold_test_dates:
+            for init in self.inits:
+                
+                init_dt = utilities.make_dt_from_str(date, init)
+                if init_dt.hour < c.wofs_reset_hour:
+                    real_init_dt = init_dt + timedelta(days=1)
+                else:
+                    real_init_dt = init_dt
+                start_dt = real_init_dt + dt.timedelta(seconds = (self.lead_time*60))
+                end_dt = start_dt + dt.timedelta(seconds = forecast_length*60)
+                
+                probs_1d, obs = self.get_probs(model, r, date, real_init_dt, save_dir)
+                if probs_1d == []:
+                    #only test if we got the probs, dont care about getting the obs here it just returns them with the function
+                    continue
+                probs_2d = np.array(probs_1d).reshape(MLTrainer.GRID_SHAPE_X,MLTrainer.GRID_SHAPE_Y)
+                srs1d, srs2d = MLTrainer.probs_to_srs(probs_1d, sr_map_df)
+                
+                init_date_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[0]
+                init_time_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[1]
+                start_time_str = start_dt.strftime('%Y%m%d-%H%M').split('-')[1]
+                end_time_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
+                
+                if c.plot_in_training:
+                    plot_file_sr = 'rf_%s_sr_probs_%s_init%s_v%s-%s_r%skm.png' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
+                    plot_file_raw = 'rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.png' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
+                    title_sr = 'Mapped SRs %s init %s valid %s-%s' %(init_date_str, init_time_str, start_time_str, end_time_str)
+                    title_raw = 'Raw Probs %s init %s valid %s-%s' %(init_date_str, init_time_str, start_time_str, end_time_str)
+                    if self.hazard == 'hail':
+                        obs_color = ('b')
+                    if self.hazard == 'wind':
+                        obs_color = ('c')
+                    if self.hazard == 'torn':
+                        obs_color = ('r')
+                    if obs == []:
+                        obs = np.zeros(MLTrainer.GRID_SHAPE_X*MLTrainer.GRID_SHAPE_Y)
+                    obs = np.array(obs).reshape(MLTrainer.GRID_SHAPE_X,MLTrainer.GRID_SHAPE_Y)
+                    MLTrainer.plot_probs(srs2d, obs, obs_color, init_date_str, title_sr, save_dir + '/' + init_date_str, plot_file_sr)
+                    MLTrainer.plot_probs(probs_2d, obs, obs_color, init_date_str, title_raw, save_dir + '/' + init_date_str, plot_file_raw)
+                
+                save_file_sr = 'rf_%s_sr_probs_%s_init%s_v%s-%s_r%skm.txt' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
+                MLTrainer.save_data(save_dir + '/' + init_date_str, save_file_sr, srs2d, 'txt')
+                
+                save_file_raw = 'rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.txt' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
+                MLTrainer.save_data(save_dir + '/' + init_date_str, save_file_raw, probs_2d, 'txt')
+                
+                
+                all_srs.extend(srs1d)
+                all_events.extend(obs)
+        
+        all_srs = np.array(all_srs)
+        all_events = np.array(all_events)
+        all_srs_fname = 'all_rf_%s_sr_probs_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
+        MLTrainer.save_data(all_srs_save_dir, all_srs_fname, all_srs, 'npy')
+        all_events_fname = 'all_%s_events_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
+        MLTrainer.save_data(all_srs_save_dir, all_events_fname, all_events, 'npy')
+    
+    def get_predictors_fname(self, init_dt, spinup_dt, start_dt, end_dt, full_npy = False):
         '''gets the full filename (including directory) of where the predictors *should* be so that we can see if they still need to be generated'''
         
         wofs_files, wofs_dir = self.find_wofs_ALL_files(init_dt, start_dt, end_dt)
-        ps_files, is_recent_ps_file = self.find_ps_files(start_dt)
+        ps_files, is_recent_ps_file = self.find_ps_files(spinup_dt)
         num_wofs_fcsts = (self.forecast_length/c.wofs_update_rate) + 1
-        if (not (len(wofs_files) == num_wofs_fcsts) and is_recent_ps_file):
+        if not ((len(wofs_files) == num_wofs_fcsts) and is_recent_ps_file):
             #we either don't have all the necessary wofs file or don't have a recent ps file to train on --> don't generate/load predictors
-            return ''
+            return ['']
         fcst_specs = ForecastSpecs.create_forecast_specs(ps_files, wofs_files, c.all_fields_file, c.all_methods_file, c.single_pt_file)
-        pred_filename = c.train_fcst_dat_dir + '/' + MLGenerator.get_dat_filename(fcst_specs)
+        if full_npy == False:
+            pred_filename = c.train_fcst_dat_dir + '/' + MLGenerator.get_dat_filename(fcst_specs)
+        else:
+            pred_filename = c.train_fcst_full_npy_dir + '/' + MLGenerator.get_full_npy_filename(fcst_specs)
         if not os.path.isfile(pred_filename):
             #predictor files don't exist, we need to generate them
             torp_files = [] #needed for generator, but not training on this... yet
             nc_outdir = '.' #doesn't matter since we're just using the generator to make/save predictor files
             generator = MLGenerator(wofs_files, ps_files, c.ps_dir, wofs_dir, torp_files, nc_outdir)
-            generator.generate()
-        return pred_filename, fcst_specs
+            try:
+                warnings.filterwarnings('ignore')
+                generator.generate()
+                warnings.filterwarnings('default')
+            except:
+                generator.generate()
+        
+        return [pred_filename, fcst_specs]
     
-    def get_events_fname(self, init_dt, start_dt, end_dt, r, fcst_specs):
+    def get_events_fname(self, init_dt, start_dt, end_dt, r, fcst_specs, full_npy = False):
         '''gets the full obs files then randomly samples them and saves them to a dat file, returns the dat filename'''
         
-        if init_dt.hour < 12:
-            init_dt = init_dt - datetime.timedelta(days = 1)
-        if start_dt.hour < 12:
-            start_dt = start_dt - datetime.timedelta(days = 1)
-        if end_dt.hour < 12:
-            end_dt = end_dt - datetime.timedelta(days = 1)
         day_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[0]
         init_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[1]
         start_str = start_dt.strftime('%Y%m%d-%H%M').split('-')[1]
         end_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
         
-        full_npy_fname = '%s/%s_reps1d_%s_v%s-%s_r%skm.npy' %(c.train_obs_full_npy_dir, self.hazard, day_str, start_str, end_str, str(r))
-        obs_full_npy = np.load(full_npy_fname)
-        sample_indices_fname = MLGenerator.get_rand_inds_filename(fcst_specs)
-        sample_indices_full_fname = '%s/%s' %(c.train_fcst_dat_dir, sample_indices_fname)
-        sample_indices = np.load(sample_indices_full_fname)
-        sampled_obs = obs_full_npy[sample_indices]
-        
-        sampled_obs_dat_fname = '%s/%s_reps1d_%s_%s_v%s-%s_r%skm.dat' %(c.train_obs_dat_dir, self.hazard, day_str, init_str, start_str, end_str, str(r))
-        sampled_obs.tofile(sampled_obs_dat_fname)
+        if c.train_type == 'obs:
+            full_npy_fname = '%s/%s_reps1d_%s_v%s-%s_r%skm.npy' %(c.train_obs_full_npy_dir, self.hazard, day_str, start_str, end_str, str(r))
+            if full_npy == True:
+                return full_npy_fname
+            obs_full_npy = np.load(full_npy_fname)
+            sample_indices_fname = MLGenerator.get_rand_inds_filename(fcst_specs)
+            sample_indices_full_fname = '%s/%s' %(c.train_fcst_dat_dir, sample_indices_fname)
+            sample_indices = np.load(sample_indices_full_fname)
+            sampled_obs = obs_full_npy[sample_indices]
+
+            sampled_obs_dat_fname = '%s/%s_reps1d_%s_%s_v%s-%s_r%skm.dat' %(c.train_obs_dat_dir, self.hazard, day_str, init_str, start_str, end_str, str(r))
+            sampled_obs.tofile(sampled_obs_dat_fname)
         
         return sampled_obs_dat_fname
         
@@ -1127,6 +1301,11 @@ class MLTrainer:
         self.date_test_folds = []
         self.date_val_folds = []
         self.date_train_folds = []
+        if self.num_folds == 1:
+            self.date_test_folds = [self.dates]
+            self.date_val_folds = [self.dates]
+            self.date_train_folds = [self.dates]
+            return
         for i in range(self.num_folds):
             if i == 0:
                 self.date_test_folds.append(self.dates[chunk_splits[i]:chunk_splits[i+1]])
@@ -1139,65 +1318,69 @@ class MLTrainer:
             elif (i+1+(self.num_folds-2)) > (self.num_folds):
                 self.date_test_folds.append(self.dates[chunk_splits[i]:chunk_splits[i+1]])
                 self.date_val_folds.append(self.dates[chunk_splits[i-1]:chunk_splits[i]])
-                mid_ind = ((i+1+(self.num_folds-2)) - (self.num_folds - 1))
                 train_folds = self.dates[chunk_splits[i+1]:chunk_splits[-1]]
-                train_folds.extend(self.dates[chunk_splits[0]:chunk_splits[mid_ind]])
+                train_folds.extend(self.dates[chunk_splits[0]:chunk_splits[i-1]])
                 self.date_train_folds.append(train_folds)
             else:
                 self.date_test_folds.append(self.dates[chunk_splits[i]:chunk_splits[i+1]])
                 self.date_val_folds.append(self.dates[chunk_splits[i-1]:chunk_splits[i]])
                 self.date_train_folds.append(self.dates[chunk_splits[i+1]:chunk_splits[i+1+(self.num_folds-2)]])
     
-    def find_wofs_files(self, init_dt, start_dt, end_dt):
+    def find_wofs_ALL_files(self, init_dt, start_dt, end_dt):
         '''Returns the wofs files (and wofs directory for the date/initialization) for a given init, start, and end.
         Part of class because it uses the forecast length'''
         
-        if init_dt.hour < c.wofs_reset_hour:
-            init_dt = init_dt - datetime.timedelta(days = 1)
-        init_date_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[0]
+        init_date_dir_date_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[0]
         init_time_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[1]
-        wofs_date_dir = c.wofs_dir + init_date_str + '/' + init_time_str + '/'
+        wofs_date_dir = c.wofs_dir + init_date_dir_date_str + '/' + init_time_str
         wofs_files = []
+        if init_dt.hour < c.wofs_reset_hour:
+            init_dt = init_dt + dt.timedelta(days = 1)
+        init_date_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[0]
         if c.use_ALL_files:
-            for i in range((self.forecast_length/c.wofs_update_rate) + 1):
-                valid_dt = init_dt + datetime.timedelta(seconds = ((i*c.wofs_update_rate)*60))
+            for i in range(int((self.forecast_length/c.wofs_update_rate) + 1)):
+                valid_dt = start_dt + dt.timedelta(seconds = ((i*c.wofs_update_rate)*60))
                 valid_time_str = valid_dt.strftime('%Y%m%d-%H%M').split('-')[1]
-                if i < 10:
-                    wofs_file = 'wofs_ALL_0%s_%s_%s_%s.nc' %(str(i), init_date_str, init_time_str, valid_time_str)
+                wofs_num = int(i+(self.lead_time/c.wofs_update_rate))
+                if wofs_num < 10:
+                    wofs_file = 'wofs_ALL_0%s_%s_%s_%s.nc' %(str(wofs_num), init_date_str, init_time_str, valid_time_str)
                 else:
-                    wofs_file = 'wofs_ALL_%s_%s_%s_%s.nc' %(str(i), init_date_str, init_time_str, valid_time_str)
-                wofs_files.append(wofs_file)
-        else: #use ENV files instead
-            for i in range((self.forecast_length/c.wofs_update_rate) + 1):
-                valid_dt = init_dt + datetime.timedelta(seconds = ((i*c.wofs_update_rate)*60))
+                    wofs_file = 'wofs_ALL_%s_%s_%s_%s.nc' %(str(wofs_num), init_date_str, init_time_str, valid_time_str)
+                if os.path.isfile(wofs_file):
+                    wofs_files.append(wofs_file)
+        else:
+            for i in range(int((self.forecast_length/c.wofs_update_rate) + 1)):
+                valid_dt = start_dt + dt.timedelta(seconds = ((i*c.wofs_update_rate)*60))
                 valid_time_str = valid_dt.strftime('%Y%m%d-%H%M').split('-')[1]
-                if i < 10:
-                    wofs_file = 'wofs_ENV_0%s_%s_%s_%s.nc' %(str(i), init_date_str, init_time_str, valid_time_str)
+                wofs_num = int(i+(self.lead_time/c.wofs_update_rate))
+                if wofs_num < 10:
+                    wofs_file = 'wofs_ALL_0%s_%s_%s_%s.nc' %(str(wofs_num), init_date_str, init_time_str, valid_time_str)
                 else:
-                    wofs_file = 'wofs_ENV_%s_%s_%s_%s.nc' %(str(i), init_date_str, init_time_str, valid_time_str)
-                if os.path.isfile(wofs_file) or (os.path.isfile(wofs_file.replace('ALL', 'ENV')) and os.path.isfile(wofs_file.replace('ALL', 'ENS')) and os.path.isfile(wofs_file.replace('ALL', 'SVR'))):
+                    wofs_file = 'wofs_ALL_%s_%s_%s_%s.nc' %(str(wofs_num), init_date_str, init_time_str, valid_time_str)
+                if os.path.isfile(wofs_date_dir + '/' + wofs_file) or (os.path.isfile(wofs_date_dir + '/' + wofs_file.replace('ALL', 'ENV')) and os.path.isfile(wofs_date_dir + '/' + wofs_file.replace('ALL', 'ENS')) and os.path.isfile(wofs_date_dir + '/' + wofs_file.replace('ALL', 'SVR'))):
                     wofs_files.append(wofs_file)
         
         return wofs_files, wofs_date_dir
     
-    def find_ps_files(start_dt):
+    def find_ps_files(self, spinup_dt):
         '''Returns the ps files associated with a given start time. Part of class to associated with wofs file finder
         (and torp file finder when it gets created). Also returns true/false to determine if there is a ps_file
         within 10 minutes of the inputted start time'''
         
         ps_files = []
         recent_files = False
-        earliest_time = start_dt - start_dt.timedelta(hours = 3)
-        curr_time = earliest_time
-        for i in range(c.ps_search_minutes):
+        earliest_time = spinup_dt - dt.timedelta(hours = 3) - dt.timedelta(seconds = c.ps_wofs_buffer*60)
+        curr_time = spinup_dt - dt.timedelta(seconds = c.ps_wofs_buffer*60)
+        while curr_time >= earliest_time:
             curr_date_str = curr_time.strftime('%Y%m%d-%H%M').split('-')[0]
             curr_time_str = curr_time.strftime('%Y%m%d-%H%M').split('-')[1] + '00'
             ps_file = 'MRMS_EXP_PROBSEVERE_%s.%s.json' %(curr_date_str, curr_time_str)
-            if os.path.isfile(ps_file):
+            if os.path.isfile(c.ps_dir + '/' + ps_file):
                 ps_files.append(ps_file)
-                if i >= (c.ps_search_minutes - c.ps_recent_file_threshold):
+                lead = (spinup_dt - curr_time).seconds*60
+                if lead >= (c.ps_search_minutes - c.ps_recent_file_threshold):
                     recent_files = True
-            curr_time = curr_time + datetime.timedelta(seconds = 60)
+            curr_time = curr_time - dt.timedelta(seconds = 60)
         
         
         return ps_files, recent_files
@@ -1222,7 +1405,7 @@ class MLTrainer:
 
         #print arr.shape
         #Rebroadcast the data into 2-d array with proper format
-        arr.shape = (-1, nvars)
+        arr.shape = (-1, c.num_training_vars)
         return arr
     
     def read_obs_binary(self, infile):
@@ -1236,6 +1419,88 @@ class MLTrainer:
         f.close()
 
         return arr
+    
+    @staticmethod
+    def get_srs(f, x, thresholds):
+        srs = []
+        for i in range(len(thresholds)):
+            t = round(thresholds[i], 2)
+            pos_indices = np.where(f >= t)
+            f_positive = pos_indices[0].size
+            pos_x = x[pos_indices]
+
+            tp = np.sum(pos_x)
+            fp = pos_x.size - tp
+
+            try:
+                SR = tp/(tp + fp)
+            except:
+                SR = 0
+            if np.isnan(SR):
+                SR = 0
+            #srs.append(max(SR, t))
+            srs.append(SR)
+        return srs
+    
+    @staticmethod
+    def save_data(save_dir, save_file, data, filetype):
+        '''saves files while ensuring the directory exists'''
+        
+        sub_dirs = save_dir.split('/')
+        full_dir = ''
+        for i in range(len(sub_dirs)):
+            sub_dir = sub_dirs[i]
+            full_dir = full_dir + '/' + sub_dir
+            if not os.path.exists(full_dir):
+                os.mkdir(full_dir)
+        
+        if filetype == 'txt':
+            np.savetxt('%s/%s' %(save_dir, save_file), data)
+        elif filetype == 'npy':
+            np.save('%s/%s' %(save_dir, save_file), data)
+        elif filetype == 'csv':
+            data.to_csv('%s/%s' %(save_dir, save_file))
+        elif filetype == 'pkl':
+            pkl = open('%s/%s' %(save_dir, save_file), 'wb')
+            pickle.dump(data, pkl)
+            pkl.close()
+    
+    @staticmethod
+    def probs_to_srs(probs, sr_map_df):
+        '''takes in one dimensional probability field and converts it to 1d and 2d SR field'''
+        
+        probs = np.around(np.array(probs), 2)
+        srs1d = np.zeros(np.array(probs).size)
+        sr_dict = {}
+        thresholds = sr_map_df.raw_prob.values
+        sr_mappings = sr_map_df.SR.values
+        for i in range(len(thresholds)):
+            t = thresholds[i]
+            sr = sr_mappings[i]
+            sr_dict[str(round(t,2))] = sr
+        for i in range(len(probs)):
+            srs1d[i] = sr_dict[str(probs[i])]
+        srs2d = srs1d.reshape(MLTrainer.GRID_SHAPE_X, MLTrainer.GRID_SHAPE_Y)
+        
+        return srs1d, srs2d
+    
+    @staticmethod
+    def plot_probs(probs, obs, obs_color, init_date, title, save_dir, save_file):
+        wofs_template_directory = '/work/mflora/SummaryFiles/' + init_date + '/2200'
+        wofs_file = 'wofs_SWT_00_' + init_date + '_2200_2200.nc'
+        wofs_grid = Grid.create_wofs_grid(wofs_template_directory, wofs_file)
+        
+        fig, ax = plt.subplots(subplot_kw={'projection': ccrs.PlateCarree()})
+        ax.add_feature(cfeature.STATES, edgecolor='black', linewidth=1)
+        levels = np.arange(0.025,1.025,0.025)
+        p = ax.contourf(wofs_grid.lons, wofs_grid.lats, probs, cmap='Blues', levels = levels, alpha = 0.8, antialiased = True, extend = 'both')
+        ax.contour(wofs_grid.lons, wofs_grid.lats, obs, colors = obs_color, linewidths = 0.25)
+        cbar_ax = fig.add_axes([0.155, 0.05, 0.712, 0.05])
+        cbar = fig.colorbar(p, cax=cbar_ax, orientation='horizontal')
+        cbar.ax.tick_params(labelsize=10)
+        ax.set_title(title)
+        fig.savefig('%s/%s' %(save_dir, save_file))
+    
     
 class Wofs:
     '''Handles the wofs forecasting/processing'''
@@ -3125,11 +3390,11 @@ class ForecastSpecs:
 
 class TORP:
     
-    def __init__(self, ID, prob, lat, lon, last_update_str, torp_df_row, radar, fcst_specs):
+    def __init__(self, ID, prob, lat, lon, last_update_str, torp_df_row, radar, fcst_specs, wofs_spinup):
         self.fcst_duration = fcst_specs.forecast_window
-        delta_t_min = (fcst_specs.start_valid_dt - fcst_specs.wofs_init_time_dt).seconds/60
-        lead_index = int(((delta_t_min - c.wofs_spinup_time)/fcst_specs.forecast_window) + 1)
-        self.num_fcsts = lead_index #if we are on the 3rd forecast period for example, we only care about making out to 3 forecasts
+        lead_time_from_wofs_init = (fcst_specs.start_valid_dt - fcst_specs.wofs_init_time_dt).seconds/60
+        self.wofs_spinup_time = wofs_spinup
+        self.lead_time = (lead_time_from_wofs_init - self.wofs_spinup_time)
         self.predictors = {'prob': prob}
         self.lats = [lat]
         self.lons = [lon]
@@ -3213,16 +3478,22 @@ class TORP:
     
     def set_future_lats_lons(self):
         minutes_to_0 = self.time_to_start_valid
-        x_dist = self.storm_motion_east * (minutes_to_0 * 60)/1000
-        y_dist = self.storm_motion_north * (minutes_to_0 * 60)/1000
         
-        for i in range(1, self.num_fcsts+2):
-            self.lons.append(utilities.haversine_get_lon(self.lats[i-1], self.lons[i-1], x_dist))
-            self.lats.append(utilities.haversine_get_lat(self.lats[i-1], self.lons[i-1], self.lons[i], y_dist))
-            self.Points.append(Point(self.lons[i], self.lats[i]))
-            
-            x_dist = self.storm_motion_east * (self.fcst_duration * 60)/1000
-            y_dist = self.storm_motion_north * (self.fcst_duration * 60)/1000
+        #set start of forecast period
+        x_dist = self.storm_motion_east * ((minutes_to_0 + self.lead_time) * 60)/1000
+        y_dist = self.storm_motion_north * ((minutes_to_0 + self.lead_time) * 60)/1000
+        
+        self.lons.append(utilities.haversine_get_lon(self.lats[0], self.lons[0], x_dist))
+        self.lats.append(utilities.haversine_get_lat(self.lats[0], self.lons[0], self.lons[1], y_dist))
+        self.Points.append(Point(self.lons[1], self.lats[1]))
+        
+        #set end of forecast period
+        x_dist = self.storm_motion_east * (self.forecast_duration * 60)/1000
+        y_dist = self.storm_motion_north * (self.forecast_duration * 60)/1000
+        
+        self.lons.append(utilities.haversine_get_lon(self.lats[1], self.lons[1], x_dist))
+        self.lats.append(utilities.haversine_get_lat(self.lats[1], self.lons[1], self.lons[2], y_dist))
+        self.Points.append(Point(self.lons[2], self.lats[2]))
     
     def fill_predictors(self, row):
         for predictor in c.torp_predictors:
@@ -3236,14 +3507,14 @@ class TORP:
         curr_hour = self.last_update.hour
         curr_min = self.last_update.minute
         curr_sec = self.last_update.second
-        if ((curr_min < (c.wofs_bottom_init_min + c.wofs_spinup_time)) or (curr_min == (c.wofs_bottom_init_min + c.wofs_spinup_time) and curr_sec == 0)) and (curr_min >= c.wofs_spinup_time):
-            self.start_valid = self.last_update.replace(minute = c.wofs_bottom_init_min + c.wofs_spinup_time, second = 0)
+        if ((curr_min < (c.wofs_bottom_init_min + self.wofs_spinup_time)) or (curr_min == (c.wofs_bottom_init_min + self.wofs_spinup_time) and curr_sec == 0)) and (curr_min >= self.wofs_spinup_time):
+            self.start_valid = self.last_update.replace(minute = c.wofs_bottom_init_min + self.wofs_spinup_time, second = 0)
         else:
-            if curr_min >= (c.wofs_bottom_init_min + c.wofs_spinup_time):
+            if curr_min >= (c.wofs_bottom_init_min + self.wofs_spinup_time):
                 self.start_valid = (self.last_update + dt.timedelta(hours = 1))
-                self.start_valid = self.last_update.replace(minute = c.wofs_spinup_time, second = 0)
+                self.start_valid = self.start_valid.replace(minute = self.wofs_spinup_time, second = 0)
             else:
-                self.start_valid = self.last_update.replace(minute = c.wofs_spinup_time, second = 0)
+                self.start_valid = self.last_update.replace(minute = self.wofs_spinup_time, second = 0)
     
     def set_time_to_start_valid(self):
         self.time_to_start_valid = ((self.start_valid - self.last_update).seconds)/60
@@ -3256,20 +3527,19 @@ class TORP:
         
         self.geometrys = [utilities.geodesic_point_buffer(self.lons[0], self.lats[0], c.torp_point_buffer)]
         
-        for i in range(2, self.num_fcsts+2):
-            line = LineString([self.Points[i-1], self.Points[i]])
-            
-            local_azimuthal_projection = "+proj=aeqd +R=6371000 +units=m +lat_0={} +lon_0={}".format((self.lats[i-1] + self.lats[i]) / 2, (self.lons[i-1] + self.lons[i]) / 2)
-            
-            wgs84_to_aeqd = Transformer.from_proj('+proj=longlat +datum=WGS84 +no_defs',local_azimuthal_projection)
-            aeqd_to_wgs84 = Transformer.from_proj(local_azimuthal_projection,'+proj=longlat +datum=WGS84 +no_defs')
+        line = LineString([self.Points[1], self.Points[2]])
+        
+        local_azimuthal_projection = "+proj=aeqd +R=6371000 +units=m +lat_0={} +lon_0={}".format((self.lats[1] + self.lats[2]) / 2, (self.lons[1] + self.lons[2]) / 2)
+        
+        wgs84_to_aeqd = Transformer.from_proj('+proj=longlat +datum=WGS84 +no_defs',local_azimuthal_projection)
+        aeqd_to_wgs84 = Transformer.from_proj(local_azimuthal_projection,'+proj=longlat +datum=WGS84 +no_defs')
 
-            line_transformed = transform(wgs84_to_aeqd.transform, line)
+        line_transformed = transform(wgs84_to_aeqd.transform, line)
 
-            buffer = line_transformed.buffer(c.torp_point_buffer * 1000)
-            line_wgs84 = transform(aeqd_to_wgs84.transform, buffer)
-            
-            self.geometrys.append(line_wgs84)
+        buffer = line_transformed.buffer(c.torp_point_buffer * 1000)
+        line_wgs84 = transform(aeqd_to_wgs84.transform, buffer)
+        
+        self.geometrys.append(line_wgs84)
     
     def check_bounds(self, grid):
         if (self.lats[0] > grid.ne_lat) or (self.lons[0] > grid.ne_lon) or (self.lats[0] < grid.sw_lat) or (self.lons[0] < grid.sw_lon):
@@ -3281,7 +3551,7 @@ class TORP:
         '''return the i, j components of a wofs grid that this torp object overlaps.
         Can change this in the future to deal with the different valid time torp swaths'''
         
-        torp_gdf = gpd.GeoDataFrame(index=[0], crs='epsg:4326', geometry=[self.geometrys[self.num_fcsts]])
+        torp_gdf = gpd.GeoDataFrame(index=[0], crs='epsg:4326', geometry=[self.geometrys[1]])
         overlap_gdf = gpd.overlay(wofs_gdf, torp_gdf, how='intersection')
         
         self.overlap_i = overlap_gdf.wofs_i.values
@@ -3545,7 +3815,7 @@ class TORP_List:
         return torp_dict
     
     @staticmethod
-    def gen_torp_dict_from_file(path, grid, fcst_specs, td = None, cutoff = None):
+    def gen_torp_dict_from_file(path, grid, fcst_specs, lead_time, td = None, cutoff = None):
         '''Given a torp csv file from a radar, this function will create
         TORP objects and add them to a dictionary of TORP lists. Each list
         will be full of TORP objects with the same long id but different
@@ -3575,7 +3845,7 @@ class TORP_List:
                 continue
             #create the TORP object
             
-            torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update, torp_df.iloc[i], torp_df, fcst_specs)
+            torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update, torp_df.iloc[i], torp_df, fcst_specs, lead_time)
             #if it's out of bounds for the wofs grid of the day, then ignore it
             if not torp.check_bounds(grid):
                 continue
@@ -3645,7 +3915,7 @@ class TORP_List:
         return torp_dict
     
     @staticmethod
-    def gen_wofs_points_gdf(torp_dict, fcst_specs, wofs_gdf):
+    def gen_wofs_points_gdf(torp_dict, fcst_specs, wofs_gdf, lead_time):
         '''This method will return a gdf with wofs_i and wofs_j values along with
         the associated torp_id. This will allow for easily applying TORP object
         predictors to each point on the wofs map.
@@ -3654,14 +3924,14 @@ class TORP_List:
         the lead time at which the resulting wofs points and torp_ids are valid.'''
         
         delta_t_min = (fcst_specs.start_valid_dt - fcst_specs.wofs_init_time_dt).seconds/60
-        lead_index = ((delta_t_min - c.wofs_spinup_time)/fcst_specs.forecast_window) + 1
+        lead_index = ((delta_t_min - lead_time)/fcst_specs.forecast_window) + 1
         
         i = 0
         gdf = None
         for long_id in torp_dict:
             l = torp_dict[long_id]
             t = l.array[0]
-            if not (t.start_valid == fcst_specs.wofs_init_time_dt + dt.timedelta(seconds = c.wofs_spinup_time*60)):
+            if not (t.start_valid == fcst_specs.wofs_init_time_dt + dt.timedelta(seconds = lead_time*60)):
                 continue
             if i == 0:
                 gdf = t.get_wofs_overlap_points(wofs_gdf, torp_dict)
@@ -3763,11 +4033,11 @@ class TORP_List:
         return full_npy
     
     @staticmethod
-    def gen_torp_npy(torp_files, wofs_grid, fcst_specs):
+    def gen_torp_npy(torp_files, wofs_grid, fcst_specs, lead_time):
         
         wofs_gdf = PS.get_wofs_gdf(wofs_grid)
         td = TORP_List.gen_full_dict_from_file_list(torp_files, wofs_grid, fcst_specs)
-        gdf = TORP_List.gen_wofs_points_gdf(td, fcst_specs, wofs_gdf)
+        gdf = TORP_List.gen_wofs_points_gdf(td, fcst_specs, wofs_gdf, lead_time)
         npy = TORP_List.overlap_gdf_to_npy(gdf, td, c.torp_vars_filename)
         
         return npy
