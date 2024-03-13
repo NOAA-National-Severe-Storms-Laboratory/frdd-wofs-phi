@@ -172,5 +172,6 @@ def add_convolutions(var_method, var, footprint):
 def make_dt_from_str(date_str, time_str):
     '''returns datetime object from YYYYMMDD string and HHMM string'''
     dt_str = date_str + '-' + time_str
+
     dt = datetime.datetime.strptime(dt_str, '%Y%m%d-%H%M')
     return dt

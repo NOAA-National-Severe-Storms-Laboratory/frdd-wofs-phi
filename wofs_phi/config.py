@@ -10,11 +10,15 @@
 #Options are: 
 #"forecast" for forecast mode in wofs viewer, 
 #"warning" for warning mode in wofs viewer, and
+
 #mode = "warning" 
 mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
-is_train_mode = True
+
+#is_train_mode = True
+is_train_mode = False
+
 plot_in_training = True
 num_training_vars = 269
 
@@ -25,16 +29,47 @@ test_dir = '/work/ryan.martz/wofs_phi_data/%s_train/test_fcsts/wofs_psv2_no_torp
 warning_dir = '' #will fill this in when we get around to re making new warnings
 torp_vars_filename = '/work/ryan.martz/wofs_phi_data/%s_train/training_data/predictors/torp_predictors.txt' %(train_type)
 
+
+#Path to the trained rfs 
+#rf_dir = "/work/ryan.martz/wofs_phi_data/models/wofs_psv2_no_torp/hail/wofslag_25/length_60"
+rf_dir = "/work/eric.loken/wofs/2024_update/SFE2024/rf_models"
+
+#Path where to save the ncdf files 
+#ncdf_save_dir = "/work/eric.loken/wofs/2024_update/SFE2024/ncdf_files"
+ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
+
+#May or may not eventually use these
+generate_forecasts = True 
+generate_reports = True 
+
+plot_forecasts = False
+
+#Buffer time for a report in minutes: 
+#i.e., consider reports within this many minutes of the valid period
+#as "yes" observations as well. 
+#e.g., 10 means if our original valid period is from 0000-0100Z, we would
+#consider yes reports to be from 2350-0110Z. 
+report_time_buffer = 10 
+
+#"lsrs" for training on local storm reports 
+#"warnings" for training on warnings 
+report_target = "lsrs"
+
 #Fraction of data to randomly sample for training
 sample_rate = 0.1 
 
 #Path to full_npy directory for training
 train_fcst_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/full_npy"
-train_obs_full_npy_dir = "/work/eric.loken/wofs/paper6/obs/full_npy"
+#train_obs_full_npy_dir = "/work/eric.loken/wofs/paper6/obs/full_npy"
+train_obs_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/full_npy"
 
 #Path to dat directory for training
 train_fcst_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/dat"
 train_obs_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/dat"
+
+#Path to the reports coordinates directory -- i.e., where are the coords.txt 
+#files that need to be read in during training? 
+reps_coords_dir = "/work/eric.loken/wofs/new_torn/storm_events_reports/fromThea"
 
 
 #If True, use the ALL naming convention (will be true on cloud) 
@@ -79,8 +114,11 @@ predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially 
 #Fields not part of the standard wofs or ProbSevere fields that we'd like to include as extras 
 extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 
-obs_radii = ["30.0", "15.0", "7.5", "39.0"]
-final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
+#obs_radii_str = ["30.0", "15.0", "7.5", "39.0"]
+obs_radii_str = ["39.0", "30.0", "15.0", "7.5"] 
+obs_radii_float = [39, 30, 15, 7.5]
+#final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
+final_str_obs_radii = ["39", "30","15", "7_5"] #form to use for final ncdf files
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
 wofs_fields_file = "standard_wofs_variables.txt"
@@ -106,7 +144,13 @@ top_hour_inits = ["1700", "1800", "1900", "2000", "2100", "2200", "2300", "0000"
                      "0200", "0300", "0400", "0500", "0600", "0700", "0800", "0900", "1000",\
                      "1100", "1200", "1300", "1400", "1500", "1600"]
 
-next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500"]
+all_wofs_init_times = ["1700", "1730", "1800", "1830", "1900", "1930", "2000", "2030", "2100",\
+                        "2130", "2200", "2230", "2300", "2330", "0000", "0030", "0100", "0130",\
+                        "0200", "0230", "0300", "0330", "0400", "0430", "0500", "0530", "0600"]
+
+next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500",\
+                    "0530", "0600", "0630", "0700", "0730", "0800", "0830", "0900", "0930", "1000", \
+                    "1030", "1100", "1130"]
 
 next_day_times = ["0000", "0005", "0010", "0015", "0020", "0025", "0030",\
                     "0030", "0035", "0040","0045", "0050", "0055",\
@@ -140,7 +184,10 @@ ps_update_rate = 2 #ProbSevere updates every 2 minutes currently
 pkl_dir = "." #Will probably need to update later
 
 wofs_spinup_time = 25 #in minutes 
+ps_spinup_time = 5 #in minutes; mostly used for warning mode 
 wofs_bottom_init_min = 30
+
+wofs_time_between_runs = 30 #in minutes: time between new wofs initializations 
 
 torp_point_buffer = 7.5
 torp_prob_change_1 = 5
