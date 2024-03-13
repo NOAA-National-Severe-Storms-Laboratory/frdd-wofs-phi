@@ -501,7 +501,7 @@ class WofsFile:
 
 
 #For forecast mode 
-def create_training():
+def create_forecast_mode_training():
     ''' Creates training files'''
 
     window = 60 #Focus on 60 minute windows 
@@ -517,6 +517,7 @@ def create_training():
     training_init_times = ["1700", "1730", "1800", "1830", "1900",\
         "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
         "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
+    training_init_times = training_init_times[6:]
 
     #training_init_times = ["2300"]
     #These are the most important right now: 
@@ -746,7 +747,7 @@ def main():
     '''Main method'''
 
     if (c.mode == "forecast"):
-        create_training()
+        create_forecast_mode_training()
 
     elif (c.mode == "warning"):
         create_warning_mode_training() 
