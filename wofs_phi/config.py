@@ -38,7 +38,7 @@ rf_dir = "/work/eric.loken/wofs/2024_update/SFE2024/rf_models"
 ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
 
 #May or may not eventually use these
-generate_forecasts = True 
+generate_forecasts = False
 generate_reports = True 
 
 plot_forecasts = False

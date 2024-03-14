@@ -506,7 +506,8 @@ def create_forecast_mode_training():
 
     window = 60 #Focus on 60 minute windows 
     
-    date_file = "probSevere_dates.txt"
+    #date_file = "probSevere_dates.txt"
+    date_file = "first_obs_dates.txt" 
 
     dates = read_txt(date_file) 
 
@@ -514,14 +515,14 @@ def create_forecast_mode_training():
 
     report_radius = 39
 
-    #training_init_times = ["1700", "1730", "1800", "1830", "1900",\
-    #    "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
-    #    "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
-    #training_init_times = training_init_times[6:]
+    training_init_times = ["1700", "1730", "1800", "1830", "1900",\
+        "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
+        "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
 
     #training_init_times = ["1900", "2000"] 
-    training_init_times = ["2000"] 
-    dates = ["20190626"] 
+    #training_init_times = ["2030"] 
+    dates = ["20190510"] 
+    
 
     #training_init_times = ["2300"]
     #These are the most important right now: 
@@ -530,7 +531,9 @@ def create_forecast_mode_training():
     #lead_times = [60, 120, 15, 180] #These are the most important right now
     #Eventually, we'll need to generate lead times of...
         #30, 60, 90, 120, 150, 180
-    lead_times = [60]
+
+    #lead_times = [30, 60, 90, 120, 150, 180] 
+    lead_times = [60] #These are wofs lead times, btw. 
 
     #Get the data
     for lead_time in lead_times:
@@ -572,7 +575,6 @@ def create_forecast_mode_training():
                 #    #reports grid 
                 #        pass
 
- 
     return 
 
 
