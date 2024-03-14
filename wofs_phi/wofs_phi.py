@@ -971,7 +971,7 @@ class ReportGenerator:
             #Add column to dataframe 
             reps_df['datetime'] = datetimes
         else: 
-            all_columns = ReportGenerator.COORDS_FILE_COLUMNS
+            all_columns = copy.deepcopy(ReportGenerator.COORDS_FILE_COLUMNS)
             all_columns.append('datetime') 
             reps_df = pd.DataFrame(columns=all_columns) 
 
@@ -988,17 +988,15 @@ class ReportGenerator:
 
         '''
 
-        #reps_df = pd.read_csv(coordsFile, names=header_names, dtype='float32', header=None)
-
         try: 
-            reps_df = pd.read_csv(coordsFile, sep=',', dtype='float32', header=None)
-            reps_df.columns = header_names
+            reports_df = pd.read_csv(coordsFile, sep=',', dtype='float32', header=None)
+            reports_df.columns = header_names
         except pd.errors.EmptyDataError:
             #If data is empty, return an empty dataframe with the appropriate column names 
             #df=pd.DataFrame(columns=['a'])
-            reps_df = pd.DataFrame(columns=header_names)
+            reports_df = pd.DataFrame(columns=header_names)
 
-        return reps_df 
+        return reports_df 
 
 
 
