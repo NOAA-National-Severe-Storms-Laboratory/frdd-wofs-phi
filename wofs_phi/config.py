@@ -11,8 +11,8 @@
 #"forecast" for forecast mode in wofs viewer, 
 #"warning" for warning mode in wofs viewer, and
 
-#mode = "warning" 
-mode = "forecast"
+mode = "warning" 
+#mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
@@ -37,11 +37,18 @@ rf_dir = "/work/eric.loken/wofs/2024_update/SFE2024/rf_models"
 #ncdf_save_dir = "/work/eric.loken/wofs/2024_update/SFE2024/ncdf_files"
 ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
 
-#May or may not eventually use these
-generate_forecasts = False
-generate_reports = True 
+#TODO: Path indicating where to save the png files to
+#May implement this later; for now, let's just save to the same location as the 
+#netcdf files 
+png_outdir = ""
 
-plot_forecasts = False
+#May or may not eventually use these
+generate_forecasts = True
+generate_reports = True
+save_npy = True #Tells whether or not to save the npy files 
+save_ncdf = True #Tells whether or not to save the ncdf files
+
+plot_forecasts = True
 
 #Buffer time for a report in minutes: 
 #i.e., consider reports within this many minutes of the valid period
