@@ -317,7 +317,7 @@ class MLTrainer:
         
         clf_save_dir = '%s/%s/wofslag_%s/length_%s' %(c.model_save_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
         clf_filename = 'wofsphi_%s_%smin_window%s-%s_r%skm_fold%s.pkl' %(self.hazard, self.forecast_length, self.lead_time, self.lead_time + self.forecast_length, r, fold)
-        MLTrainer.save_data(clf_save_dir, clf_filename, clf, 'pkl')
+        utilities.save_data(clf_save_dir, clf_filename, clf, 'pkl')
     
     def run_on_validation(self, fold, r):
         fold_val_dates = self.date_val_folds[fold]
@@ -348,15 +348,15 @@ class MLTrainer:
         all_probs = np.array(all_probs)
         all_events = np.array(all_events)
         all_probs_fname = 'all_rf_%s_raw_probs_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_probs_save_dir, all_probs_fname, all_probs, 'npy')
+        utilities.save_data(all_probs_save_dir, all_probs_fname, all_probs, 'npy')
         all_events_fname = 'all_%s_events_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_probs_save_dir, all_events_fname, all_events, 'npy')
+        utilities.save_data(all_probs_save_dir, all_events_fname, all_events, 'npy')
         
         thresholds = np.round(np.arange(0,1.01,0.01), 2)
         srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
         df = pd.DataFrame({'raw_prob': thresholds, 'SR': srs})
         sr_map_fname = 'sr_map_%s_spinup%smin_length%smin_%s-%s_r%skm_fold%s.csv' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_probs_save_dir, sr_map_fname, df, 'csv')
+        utilities.save_data(all_probs_save_dir, sr_map_fname, df, 'csv')
     
     def get_probs(self, model, r, date, real_init_dt, save_dir, do_saving = False):
         if real_init_dt.hour < c.wofs_reset_hour:
@@ -382,16 +382,17 @@ class MLTrainer:
             start_time_str = start_dt.strftime('%Y%m%d-%H%M').split('-')[1]
             end_time_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
             save_file = 'rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.txt' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
-            MLTrainer.save_data(save_dir + '/' + init_date_str, save_file, probs_2d, 'txt')
+            utilities.save_data(save_dir + '/' + init_date_str, save_file, probs_2d, 'txt')
         
         try:
             obs_fname = self.get_events_fname(init_dt, start_dt, end_dt, r, fcst_specs, full_npy = True)
-            obs = list(np.load(obs_fname))
+            events = list(np.load(obs_fname))
         except:
             #no obs file
-            obs = []
+            events = []
+            print('no obs file')
         
-        return list(clf_probs), obs
+        return list(clf_probs), events
     
     def save_test_predictions(self, fold, r, plotting = False):
         fold_test_dates = self.date_test_folds[fold]
@@ -450,10 +451,10 @@ class MLTrainer:
                     MLTrainer.plot_probs(probs_2d, obs, obs_color, init_date_str, title_raw, save_dir + '/' + init_date_str, plot_file_raw)
                 
                 save_file_sr = 'rf_%s_sr_probs_%s_init%s_v%s-%s_r%skm.txt' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
-                MLTrainer.save_data(save_dir + '/' + init_date_str, save_file_sr, srs2d, 'txt')
+                utilities.save_data(save_dir + '/' + init_date_str, save_file_sr, srs2d, 'txt')
                 
                 save_file_raw = 'rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.txt' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
-                MLTrainer.save_data(save_dir + '/' + init_date_str, save_file_raw, probs_2d, 'txt')
+                utilities.save_data(save_dir + '/' + init_date_str, save_file_raw, probs_2d, 'txt')
                 
                 
                 all_srs.extend(srs1d)
@@ -462,9 +463,9 @@ class MLTrainer:
         all_srs = np.array(all_srs)
         all_events = np.array(all_events)
         all_srs_fname = 'all_rf_%s_sr_probs_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_srs_save_dir, all_srs_fname, all_srs, 'npy')
+        utilities.save_data(all_srs_save_dir, all_srs_fname, all_srs, 'npy')
         all_events_fname = 'all_%s_events_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_srs_save_dir, all_events_fname, all_events, 'npy')
+        utilities.save_data(all_srs_save_dir, all_events_fname, all_events, 'npy')
     
     def get_predictors_fname(self, init_dt, spinup_dt, start_dt, end_dt, full_npy = False):
         '''gets the full filename (including directory) of where the predictors *should* be so that we can see if they still need to be generated'''
@@ -502,20 +503,46 @@ class MLTrainer:
         start_str = start_dt.strftime('%Y%m%d-%H%M').split('-')[1]
         end_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
         
-        if c.train_type == 'obs:
+        sample_indices_fname = MLGenerator.get_rand_inds_filename(fcst_specs)
+        sample_indices_full_fname = '%s/%s' %(c.train_fcst_dat_dir, sample_indices_fname)
+        sample_indices = np.load(sample_indices_full_fname)
+        
+        if c.train_type == 'obs':
             full_npy_fname = '%s/%s_reps1d_%s_v%s-%s_r%skm.npy' %(c.train_obs_full_npy_dir, self.hazard, day_str, start_str, end_str, str(r))
             if full_npy == True:
                 return full_npy_fname
             obs_full_npy = np.load(full_npy_fname)
-            sample_indices_fname = MLGenerator.get_rand_inds_filename(fcst_specs)
-            sample_indices_full_fname = '%s/%s' %(c.train_fcst_dat_dir, sample_indices_fname)
-            sample_indices = np.load(sample_indices_full_fname)
             sampled_obs = obs_full_npy[sample_indices]
-
-            sampled_obs_dat_fname = '%s/%s_reps1d_%s_%s_v%s-%s_r%skm.dat' %(c.train_obs_dat_dir, self.hazard, day_str, init_str, start_str, end_str, str(r))
-            sampled_obs.tofile(sampled_obs_dat_fname)
+            sampled_events_dat_fname = '%s_reps1d_%s_%s_v%s-%s_r%skm.dat' %(self.hazard, day_str, init_str, start_str, end_str, r)
+            utilties.save_data(c.train_obs_dat_dir, sampled_events_dat_fname, sampled_obs, 'dat')
+            
+        elif c.train_type == 'warnings':
+            full_npy_fname = '%s/%s/%s/%s_warnings_%s_v%s-%s.npy' %(c.train_warnings_full_1d_npy_dir, self.forecast_length, self.hazard,
+                                                                    self.hazard, day_str, start_str, end_str)
+            if full_npy == True:
+                return full_npy_fname
+            warnings_full_npy = np.load(full_npy_fname)
+            sampled_warnings = warnings_full_npy[sample_indices]
+            dat_dir = '%s/%s/%s' %(c.train_warnings_sampled_1d_dat_dir, self.forecast_length, self.hazard)
+            sampled_events_dat_fname = '%s_warnings_%s_init%s_v%s-%s.dat' %(self.hazard, day_str, init_str, start_str, end_str)
+            utilties.save_data(dat_dir, sampled_events_dat_fname, sampled_warnings, 'dat')
         
-        return sampled_obs_dat_fname
+        elif c.train_type == 'obs_and_warnings':
+            full_npy_fname = '%s/%s/%s/%s_obs_and_warnings_%s_v%s-%s_r%skm_2d.npy' %(c.train_obs_and_warnings_full_1d_npy_dir, self.forecast_length,
+                                                                                     self.hazard, self.hazard, day_str, start_str, end_str, r)
+            if full_npy == True:
+                return full_npy_fname
+            events_full_npy = np.load(full_npy_fname)
+            sampled_events = events_full_npy[sample_indices]
+            dat_dir = '%s/%s/%s' %(c.train_obs_and_warnings_sampled_dat_dir, self.forecast_length, self.hazard)
+            sampled_events_dat_fname = '%s_obs_and_warnings_%s_%s_v%s-%s_r%skm.dat' %(self.hazard, day_str, init_str, start_str, end_str, r)
+            utilities.save_data(dat_dir, sampled_events_dat_fname, sampled_events, 'dat')
+            
+            
+        #TODO: add elif for if c.train_type is 'obs_and_warnings' after all warnings are created. Go through and do a max between the full warnings/obs npy
+        #files and store those somewhere
+        
+        return sampled_events_dat_fname
         
     
     def set_chunk_splits(self):
@@ -674,29 +701,6 @@ class MLTrainer:
             #srs.append(max(SR, t))
             srs.append(SR)
         return srs
-    
-    @staticmethod
-    def save_data(save_dir, save_file, data, filetype):
-        '''saves files while ensuring the directory exists'''
-        
-        sub_dirs = save_dir.split('/')
-        full_dir = ''
-        for i in range(len(sub_dirs)):
-            sub_dir = sub_dirs[i]
-            full_dir = full_dir + '/' + sub_dir
-            if not os.path.exists(full_dir):
-                os.mkdir(full_dir)
-        
-        if filetype == 'txt':
-            np.savetxt('%s/%s' %(save_dir, save_file), data)
-        elif filetype == 'npy':
-            np.save('%s/%s' %(save_dir, save_file), data)
-        elif filetype == 'csv':
-            data.to_csv('%s/%s' %(save_dir, save_file))
-        elif filetype == 'pkl':
-            pkl = open('%s/%s' %(save_dir, save_file), 'wb')
-            pickle.dump(data, pkl)
-            pkl.close()
     
     @staticmethod
     def probs_to_srs(probs, sr_map_df):

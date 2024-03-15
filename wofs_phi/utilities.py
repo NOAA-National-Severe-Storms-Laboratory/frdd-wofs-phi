@@ -174,3 +174,27 @@ def make_dt_from_str(date_str, time_str):
     dt_str = date_str + '-' + time_str
     dt = datetime.datetime.strptime(dt_str, '%Y%m%d-%H%M')
     return dt
+
+def save_data(save_dir, save_file, data, filetype):
+        '''saves files while ensuring the directory exists'''
+        
+        sub_dirs = save_dir.split('/')
+        full_dir = ''
+        for i in range(len(sub_dirs)):
+            sub_dir = sub_dirs[i]
+            full_dir = full_dir + '/' + sub_dir
+            if not os.path.exists(full_dir):
+                os.mkdir(full_dir)
+        
+        if filetype == 'txt':
+            np.savetxt('%s/%s' %(save_dir, save_file), data)
+        elif filetype == 'npy':
+            np.save('%s/%s' %(save_dir, save_file), data)
+        elif filetype == 'csv':
+            data.to_csv('%s/%s' %(save_dir, save_file))
+        elif filetype == 'pkl':
+            pkl = open('%s/%s' %(save_dir, save_file), 'wb')
+            pickle.dump(data, pkl)
+            pkl.close()
+        elif filetype == 'dat':
+            data.tofile('%s/%s' %(save_dir, save_file))
