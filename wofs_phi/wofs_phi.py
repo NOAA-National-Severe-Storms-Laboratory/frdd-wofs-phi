@@ -733,7 +733,8 @@ class ReportGenerator:
 
                 subset_df = ReportGenerator.get_subset_reps_df(coords_df, repsStartDT, repsEndDT)
 
-                subset_df = ReportGenerator.add_latlon_to_df(coords_df) 
+
+                subset_df = ReportGenerator.add_latlon_to_df(subset_df) 
 
 
                 #Initialize a ReportGenerator object -- with gdf initialized as None. Will be updated later. 
