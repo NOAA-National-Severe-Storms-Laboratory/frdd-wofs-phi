@@ -506,22 +506,27 @@ def create_forecast_mode_training():
 
     window = 60 #Focus on 60 minute windows 
     
-    #date_file = "probSevere_dates.txt"
-    date_file = "first_obs_dates.txt" 
+    date_file = "probSevere_dates.txt"
+    #date_file = "first_obs_dates.txt" 
 
     dates = read_txt(date_file) 
 
     torpFiles = [] 
 
-    report_radius = 39
+    report_radius = 39 #Only really used to check if reports file 
+                        #already exists 
 
     training_init_times = ["1700", "1730", "1800", "1830", "1900",\
         "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
         "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
 
+    #dates = dates[37:]
+    #training_init_times = ["2300"] 
+    #dates = ["20190506"] 
+    #dates = ["20190501"] 
     #training_init_times = ["1900", "2000"] 
     #training_init_times = ["2030"] 
-    dates = ["20190510"] 
+    #dates = ["20190510"] 
     
 
     #training_init_times = ["2300"]
@@ -533,7 +538,9 @@ def create_forecast_mode_training():
         #30, 60, 90, 120, 150, 180
 
     #lead_times = [30, 60, 90, 120, 150, 180] 
-    lead_times = [60] #These are wofs lead times, btw. 
+    #lead_times = [60] #These are wofs lead times, btw. 
+    #lead_times = [30, 90, 120] #priorities
+    lead_times = [60] 
 
     #Get the data
     for lead_time in lead_times:
@@ -557,11 +564,14 @@ def create_forecast_mode_training():
                                     c.train_fcst_full_npy_dir)
 
 
-                already_done_reps = does_reps_file_exist(date, mld.wofs_files[0], \
-                                mld.wofs_files[-1], c.train_obs_full_npy_dir, \
-                                report_radius)
+                #already_done_reps = does_reps_file_exist(date, mld.wofs_files[0], \
+                #                mld.wofs_files[-1], c.train_obs_full_npy_dir, \
+                #                report_radius)
+
+
 
                 #Note: Can also check to make sure we don't already have a npy file 
+                #if (proceed_wofs == True and proceed_ps == True and already_done == False):
                 #if (proceed_wofs == True and proceed_ps == True and already_done == False):
                 if (proceed_wofs == True and proceed_ps == True):
 
@@ -598,6 +608,8 @@ def create_warning_mode_training():
     #Maybe for training in warning mode I'll pick a time at the top
     #of the hour, or something 
 
+    #dates = ["20190506"] 
+    #start_times = ["2205", "2235", "2305", "2335", "0005"]
 
     #NOTE: date is the before-00z date 
     for d in range(len(dates)):
@@ -641,7 +653,8 @@ def create_warning_mode_training():
                                 report_radius)
 
             #Note: Can also check to make sure we don't already have a npy file 
-            if (proceed_wofs == True and proceed_ps == True and already_done == False):
+            #if (proceed_wofs == True and proceed_ps == True and already_done == False):
+            if (proceed_wofs == True and proceed_ps == True):
 
                 ml.generate()
             

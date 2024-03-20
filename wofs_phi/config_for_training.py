@@ -44,8 +44,7 @@ ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
 png_outdir = ""
 
 #May or may not eventually use these
-#generate_forecasts = True #Generates the predictors array if True
-generate_forecasts = False
+generate_forecasts = True #Generates the predictors array if True
 generate_reports = True #Generates the reports file if True 
 save_npy = True #Tells whether or not to save the npy predictor files 
 save_ncdf = False #Tells whether or not to create/save the ncdf (realtime) files

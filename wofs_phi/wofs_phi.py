@@ -61,8 +61,11 @@ import warnings
 import cartopy.feature as cfeature
 import cartopy.crs as ccrs
 
+from plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mode
 
-_wofs = '/home/monte.flora/python_packages/frdd-wofs-post'
+
+#_wofs = '/home/monte.flora/python_packages/frdd-wofs-post'
+_wofs = '/home/eric.loken/python_packages/frdd-wofs-post'
 
 sys.path.insert(0, _wofs)
 from wofs.common import remove_reserved_keys
@@ -109,6 +112,23 @@ class MLGenerator:
         #Get the forecast specifications (e.g., start valid, end_valid, ps_lead time, wofs_lead_time, etc.) 
         #These will be determined principally by the wofs files we're dealing with
         forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files, c.all_fields_file, c.all_methods_file, c.single_pt_file)
+
+
+        #Purely for testing: Will remove soon
+        #full_ncdf_outname = "%s/%s/%s" %(c.ncdf_save_dir, c.mode,\
+        #                                        MLGenerator.get_ncdf_outname(forecast_specs))
+
+        #TODO: Probably will update this later; for now, save to same path as netcdf 
+        #png_path = "%s/%s" %(c.ncdf_save_dir, c.mode)
+
+        #try: 
+        #    plot_wofs_phi_forecast_mode(full_ncdf_outname, png_path, \
+        #                    forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
+        #                    forecast_specs.start_valid_dt, forecast_specs.end_valid_dt,\
+        #                    forecast_specs.forecast_window)
+
+        #except FileNotFoundError:
+        #   return 
 
 
         if (c.generate_forecasts == True):
@@ -166,7 +186,7 @@ class MLGenerator:
                             forecast_specs, fcst_grid)
 
             #Save predictors to file (if we're training)
-            if (c.is_train_mode == True):
+            if (c.save_npy == True):
         
                 #torp_predictors = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs)
 
@@ -181,15 +201,36 @@ class MLGenerator:
                         dat_fname, rand_inds_fname)
 
         
-            else: 
+            if (c.save_ncdf == True):
 
                 #NOTE: All radii and hazards will go into the same ncdf file 
 
                 MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array, wofs.xarr) 
                 if (c.plot_forecasts == True):
+                    
                     #Plot the forecasts to png 
+                    full_ncdf_outname = "%s/%s/%s" %(c.ncdf_save_dir, c.mode,\
+                                                MLGenerator.get_ncdf_outname(forecast_specs))
 
-                    pass
+                    #TODO: Probably will update this later; for now, save to same path as netcdf 
+                    png_path = "%s/%s" %(c.ncdf_save_dir, c.mode)
+
+                    if (c.mode == "forecast"):
+                                
+                        plot_wofs_phi_forecast_mode(full_ncdf_outname, png_path, \
+                            forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
+                            forecast_specs.start_valid_dt, forecast_specs.end_valid_dt,\
+                            forecast_specs.forecast_window)
+
+ 
+                    #TODO: Will tackle this after handling forecast mode 
+                    elif (c.mode == "warning"):
+                        
+                        plot_wofs_phi_warning_mode(full_ncdf_outname, png_path, \
+                            forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
+                            forecast_specs.start_valid_dt, forecast_specs.end_valid_dt,\
+                            forecast_specs.forecast_window)
+
 
 
         #Get the reports if we're supposed to 
@@ -197,10 +238,6 @@ class MLGenerator:
 
             #TODO: input the one_d_pred_array
             rep = ReportGenerator.generate(forecast_specs, fcst_grid)
-
-        
-
-
 
 
         return
@@ -280,7 +317,7 @@ class MLGenerator:
             @str_radius is the radius of the obs in string format
         '''
        
-        use_fname = "%s_reps1d_%s_%s_%s_v%s-%s_r%skm.npy" %(haz_name, fSpecs.before_00z_date,\
+        use_fname = "%s_reps1d_%s_%s_%s_v%s-%s_r%skm.dat" %(haz_name, fSpecs.before_00z_date,\
                         fSpecs.wofs_init_time,fSpecs.ps_init_time, fSpecs.start_valid,\
                         fSpecs.end_valid, str_radius)
  
@@ -696,7 +733,8 @@ class ReportGenerator:
 
                 subset_df = ReportGenerator.get_subset_reps_df(coords_df, repsStartDT, repsEndDT)
 
-                subset_df = ReportGenerator.add_latlon_to_df(coords_df) 
+
+                subset_df = ReportGenerator.add_latlon_to_df(subset_df) 
 
 
                 #Initialize a ReportGenerator object -- with gdf initialized as None. Will be updated later. 
