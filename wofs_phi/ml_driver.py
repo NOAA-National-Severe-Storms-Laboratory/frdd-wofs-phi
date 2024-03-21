@@ -3,9 +3,7 @@
 #===================================================
 
 from wofs_phi import * 
-#import config as c
-#import config_for_training as c
-import config_for_reports_only as c
+import config as c
 import os.path
 from itertools import compress 
 
@@ -49,12 +47,16 @@ class MLDriver:
         return 
 
     @classmethod 
-    def start_driver(cls, before00zDate, timeWindow, wofsInitTime, wofsLeadTime, psPath):
+    def start_driver(cls, before00zDate, timeWindow, wofsInitTime, wofsLeadTime, psPath,\
+                current_mode):
         '''Creates an MLDriver object given a date (from before 00z; @before00zDate), 
             time window (in minutes; @timeWindow), 
             wofs initialization time (string (YYYYMMDD); @wofsInitTime), 
             wofs lead time (in minutes; @wofsLeadTime), and probSevere path (@psPath)
-            @Returns MLDriver object 
+            @Returns MLDriver object
+            @current_mode is the string of the mode we're in: 
+                "forecast" for forecast mode, 
+                "warning" for warning mode  
 
         '''
 
@@ -66,7 +68,7 @@ class MLDriver:
                                 before00zDate) 
 
         #Find ps files 
-        ps_file_list = MLDriver.find_ps_files_from_first_wofs(wofs_file_list[0])
+        ps_file_list = MLDriver.find_ps_files_from_first_wofs(wofs_file_list[0], current_mode)
 
         #Find the ps init time 
         ps_iTime, __ = ForecastSpecs.find_ps_date_time(ps_file_list[0], c.ps_version) 
@@ -192,7 +194,7 @@ class MLDriver:
 
 
     @staticmethod
-    def find_ps_files_from_first_wofs(first_wofs_file):
+    def find_ps_files_from_first_wofs(first_wofs_file, mode_str):
         ''' Finds the set of ProbSevere files given the first wofs
             file.
 
@@ -204,28 +206,33 @@ class MLDriver:
             In warning mode, the first probSevere file will be the
                 most recent PS file relative to the start of the 
                 valid period 
+
+            @first_wofs_file is the first/earliest wofs file of the 
+                valid period 
+
+            @mode_str is the string corresponding to which mode we're in;
+                "forecast" for forecast mode ; "warning" for warning mode
         '''
         
         #First, need to get the datetime object associated with the
         #first wofs file
 
 
-        if (c.mode == "warning"):
+        if (mode_str == "warning"):
             wofs_time, wofs_date = ForecastSpecs.find_date_time_from_wofs(\
                 first_wofs_file, "forecast") 
-        elif (c.mode == "forecast"):
+        elif (mode_str == "forecast"):
             wofs_time, wofs_date = ForecastSpecs.find_date_time_from_wofs(\
                 first_wofs_file, "init") #But then we still need to add the spinup in this case
-
 
         wofs_dt = ForecastSpecs.str_to_dattime(wofs_time, wofs_date) 
 
         #We need to add the spinup time if we're in forecast mode
-        if (c.mode == "forecast"):
+        if (mode_str == "forecast"):
             wofs_dt += timedelta(minutes=c.wofs_spinup_time) 
 
         #For warning mode, we need to remove time to account for ps spinup
-        elif (c.mode == "warning"):
+        elif (mode_str == "warning"):
             wofs_dt -= timedelta(minutes=c.ps_spinup_time) 
 
         #Now, find initial probSevere datetime
@@ -506,6 +513,9 @@ class WofsFile:
 def create_forecast_mode_training():
     ''' Creates training files'''
 
+
+    mode = "forecast" 
+
     window = 60 #Focus on 60 minute windows 
     
     date_file = "probSevere_dates.txt"
@@ -553,7 +563,8 @@ def create_forecast_mode_training():
         for date in dates:
             for init_time in training_init_times:
                 print (date, init_time, lead_time) 
-                mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir)
+                mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir,\
+                                    mode)
 
                 #Use this to drive the forecast 
                 ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
@@ -599,6 +610,8 @@ def create_warning_mode_training():
         Similarly, in training mode, we will loop over a series of start times 
     '''
 
+    mode = "warning" 
+
     window = 60 #Focus on 60 minute windows 
     date_file = "probSevere_dates.txt"
     dates = read_txt(date_file)
@@ -640,7 +653,8 @@ def create_warning_mode_training():
             
 
             #Now, start MLDriver object 
-            mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir)
+            mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir,\
+                    mode)
     
             #Use this to drive the forecast 
             ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
@@ -772,10 +786,14 @@ def read_txt(txt_file):
 def main():
     '''Main method'''
 
-    if (c.mode == "forecast"):
+    #SET mode here 
+    mode_to_generate = "forecast"
+    
+
+    if (mode_to_generate == "forecast"):
         create_forecast_mode_training()
 
-    elif (c.mode == "warning"):
+    elif (mode_to_generate == "warning"):
         create_warning_mode_training() 
 
     #date = "20190430" #date before 00z 

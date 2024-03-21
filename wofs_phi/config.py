@@ -11,7 +11,8 @@
 #"forecast" for forecast mode in wofs viewer, 
 #"warning" for warning mode in wofs viewer, and
 
-mode = "warning" 
+#NOTE: mode will now be a parameter passed in to MLGenerator
+#mode = "warning" 
 #mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time

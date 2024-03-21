@@ -53,9 +53,7 @@ from sklearn.calibration import calibration_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import xarray as xr
-#import config as c
-#import config_for_training as c 
-import config_for_reports_only as c 
+import config as c
 import utilities
 import predictor_extractor as pex
 
@@ -79,7 +77,8 @@ class MLGenerator:
     ''' This class will handle the ML generator functions. '''
 
 
-    def __init__(self, wofs_files, ps_files, ps_path, wofs_path, torp_files, nc_outdir): 
+    def __init__(self, wofs_files, ps_files, ps_path, wofs_path, torp_files, nc_outdir,\
+                    mode): 
 
         ''' @wofs_files is the list of wofs_files to use for the prediction (in chronological order,
             beginning with the start of the prediction window/valid period and ending with the end of
@@ -93,6 +92,8 @@ class MLGenerator:
             @wofs_path is the string path to the wofs files   
 
             @nc_outdir is the directory to save the final .ncdf files to 
+        
+            @mode is a string: either "forecast" or "warning" -- tells which mode to run in 
             
         '''
 
@@ -102,6 +103,7 @@ class MLGenerator:
         self.wofs_path = wofs_path
         self.nc_outdir = nc_outdir
         self.torp_files = torp_files
+        self.mode = mode 
 
 
     def generate(self):
@@ -114,23 +116,6 @@ class MLGenerator:
         #Get the forecast specifications (e.g., start valid, end_valid, ps_lead time, wofs_lead_time, etc.) 
         #These will be determined principally by the wofs files we're dealing with
         forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files, c.all_fields_file, c.all_methods_file, c.single_pt_file)
-
-
-        #Purely for testing: Will remove soon
-        #full_ncdf_outname = "%s/%s/%s" %(c.ncdf_save_dir, c.mode,\
-        #                                        MLGenerator.get_ncdf_outname(forecast_specs))
-
-        #TODO: Probably will update this later; for now, save to same path as netcdf 
-        #png_path = "%s/%s" %(c.ncdf_save_dir, c.mode)
-
-        #try: 
-        #    plot_wofs_phi_forecast_mode(full_ncdf_outname, png_path, \
-        #                    forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
-        #                    forecast_specs.start_valid_dt, forecast_specs.end_valid_dt,\
-        #                    forecast_specs.forecast_window)
-
-        #except FileNotFoundError:
-        #   return 
 
 
         if (c.generate_forecasts == True):
@@ -207,17 +192,19 @@ class MLGenerator:
 
                 #NOTE: All radii and hazards will go into the same ncdf file 
 
-                MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array, wofs.xarr) 
+                MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array, \
+                        wofs.xarr, self.mode) 
+
                 if (c.plot_forecasts == True):
                     
                     #Plot the forecasts to png 
-                    full_ncdf_outname = "%s/%s/%s" %(c.ncdf_save_dir, c.mode,\
+                    full_ncdf_outname = "%s/%s/%s" %(c.ncdf_save_dir, self.mode,\
                                                 MLGenerator.get_ncdf_outname(forecast_specs))
 
                     #TODO: Probably will update this later; for now, save to same path as netcdf 
-                    png_path = "%s/%s" %(c.ncdf_save_dir, c.mode)
+                    png_path = "%s/%s" %(c.ncdf_save_dir, self.mode)
 
-                    if (c.mode == "forecast"):
+                    if (self.mode == "forecast"):
                                 
                         plot_wofs_phi_forecast_mode(full_ncdf_outname, png_path, \
                             forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
@@ -226,7 +213,7 @@ class MLGenerator:
 
  
                     #TODO: Will tackle this after handling forecast mode 
-                    elif (c.mode == "warning"):
+                    elif (self.mode == "warning"):
                         
                         plot_wofs_phi_warning_mode(full_ncdf_outname, png_path, \
                             forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
@@ -383,13 +370,16 @@ class MLPrediction:
 
 
     @classmethod
-    def create_rf_predictions(cls, specs, grid_obj, predictor_array, wofs_xarr):
+    def create_rf_predictions(cls, specs, grid_obj, predictor_array, wofs_xarr, \
+                    mode_type):
         '''Factory method for creating RF predictions.
             @specs is a ForecastSpecs object
             @grid_obj is a Grid object
             @predictor_array is the array of predictors to run through the RF 
                 to make predictions. Format: (rows: examples, columns: predictors)
             @wofs_xarr is the wofs xarray with the metadata added 
+            @mode_type is either "forecast" for forecast mode or "warning" for
+                warning mode 
         '''
 
         zero_probs_2d = np.zeros((grid_obj.ny, grid_obj.nx))
@@ -406,7 +396,7 @@ class MLPrediction:
 
                 #Get filename 
                 rf_filename = MLPrediction.get_rf_filename(specs.forecast_window,\
-                                hazard, radius_str) 
+                                hazard, radius_str, mode_type) 
 
 
                 rfModel = MLPrediction.load_rf_model(rf_filename) 
@@ -422,7 +412,8 @@ class MLPrediction:
 
 
         #Once we have a list of mlp objects, save to netcdf file 
-        FinalNCFile.create_final_ncdf_from_mlps(mlp_list, specs, grid_obj, wofs_xarr) 
+        FinalNCFile.create_final_ncdf_from_mlps(mlp_list, specs, grid_obj, wofs_xarr,\
+                        mode_type) 
                 
 
 
@@ -472,15 +463,17 @@ class MLPrediction:
 
     #TODO: Will have to fully implmement this later -- and probably make this an instance method
     @staticmethod
-    def get_rf_filename(window_minutes, haz_name, radius):
+    def get_rf_filename(window_minutes, haz_name, mode_str):
         '''Gets the full filenames to the rf file. Returns the pkl files 
             in the hazard order as given in the config file
             @window_minutes is the time window of the valid period in minutes
+            @mode_str is either "forecast" for forecast mode or "warning" 
+                for warning mode 
 
         '''
 
         pkl_filename = "%s/wofsphi_%s_%smin_%s_mode_r%skm.pkl" \
-                        %(c.rf_dir, haz_name, window_minutes, c.mode, radius)
+                        %(c.rf_dir, haz_name, window_minutes, mode_str, radius)
 
 
         return pkl_filename
@@ -495,24 +488,33 @@ class FinalNCFile:
         '''@list_of_mlps is a list of MLPrediction objects needed for the current final netcdf file
             @xr_list is a list of xarray datasets that will be used to construct the final netcdf file
             @outname is the name of the ncdf output file 
-            @xr is the combined xarray dataset: i.e., all elements of the xr_list'''
+            @xr is the combined xarray dataset: i.e., all elements of the xr_list
+            @mode is mode type (str): "forecast" for forecast mode, "warning" for warning mode 
+        '''
 
 
         self.list_of_mlps = list_of_mlps
         self.xr_list = xr_list
         self.outname = outname
         self.xr = xr
+        self.mode = mode 
 
         return 
 
 
     @classmethod
-    def create_final_ncdf_from_mlps(cls, mlps_list, fcstSpecs, gridObject, wofsXR):
+    def create_final_ncdf_from_mlps(cls, mlps_list, fcstSpecs, gridObject, wofsXR,\
+            mode_str):
+
         ''' Factory method for creating FinalNCFile object from list of MLPrediction objects.
             @mlps_list is a list of MLPrediction objects.
             @fcstSpecs is a ForecastSpecs object
             @gridObject is a Grid object
-            @wofsXR is a wofs xarray dataset with the metadata added'''
+            @wofsXR is a wofs xarray dataset with the metadata added
+            @mode_str is the string corresponding to what mode we're in: 
+                "forecast" for forecast mode, "warning" for warning mode 
+
+        '''
 
        
         #Find the ncdf outname 
@@ -523,7 +525,7 @@ class FinalNCFile:
                         "x": (range(gridObject.nx))})
 
         #Create an initial FinalNCFile object
-        nc_file_obj = FinalNCFile(mlps_list, [], nc_outname, initial_xr) 
+        nc_file_obj = FinalNCFile(mlps_list, [], nc_outname, initial_xr, mode_str) 
 
         #Set the xr_list 
         nc_file_obj.set_xr_list(gridObject) 
@@ -604,7 +606,7 @@ class FinalNCFile:
     def save_ncdf(self):
 
         #from wofs.post.utils import save_dataset #save_dataset(filename, xarray_data)
-        full_outname = "%s/%s/%s" %(c.ncdf_save_dir, c.mode, self.outname) 
+        full_outname = "%s/%s/%s" %(c.ncdf_save_dir, self.mode, self.outname) 
 
         save_dataset(full_outname, self.xr) 
 
@@ -4113,6 +4115,8 @@ def main():
     wofs_direc = "/work/mflora/SummaryFiles/20210604/0200"
     ps_direc = "/work/eric.loken/wofs/probSevere"
 
+    mode = "forecast" #Now has to be a parameter that gets passed in
+
 
     #TODO: We'd need to develop some code (maybe in an outside script, etc. to determine these files/filenames
     wofs_files = ["wofs_ALL_05_20210605_0200_0225.nc", "wofs_ALL_06_20210605_0200_0230.nc", \
@@ -4180,7 +4184,8 @@ def main():
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033234_KUDX_tordetections.csv',
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033456_KUDX_tordetections.csv']
 
-    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, c.nc_outdir)
+    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, c.nc_outdir,\
+                            mode)
 
     #Do the generation 
     ml_obj.generate() 
