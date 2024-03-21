@@ -53,7 +53,9 @@ from sklearn.calibration import calibration_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import xarray as xr
-import config as c
+#import config as c
+#import config_for_training as c 
+import config_for_reports_only as c 
 import utilities
 import predictor_extractor as pex
 

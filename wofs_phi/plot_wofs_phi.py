@@ -86,8 +86,10 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
         print (v) 
 
         #initialize the plotter 
-        png_save_name = "%s_%s_%s_%s_f%s.png" %(v, wofs_init_date_str, wofs_init_time_str,\
-                            ps_init_time_str, str(lead_time_minutes).zfill(3))
+        #png_save_name = "%s_%s_%s_%s_f%s.png" %(v, wofs_init_date_str, wofs_init_time_str,\
+        #                    ps_init_time_str, str(lead_time_minutes).zfill(3))
+
+        png_save_name = "%s_f%s.png" %(v, str(lead_time_minutes).zfill(3))
 
         plotter = WoFSPlotter(file_path=nc_fname, \
                                 outdir = png_outdir,\

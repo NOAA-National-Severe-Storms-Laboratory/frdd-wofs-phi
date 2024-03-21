@@ -3,7 +3,9 @@
 #===================================================
 
 from wofs_phi import * 
-import config as c
+#import config as c
+#import config_for_training as c
+import config_for_reports_only as c
 import os.path
 from itertools import compress 
 
@@ -527,6 +529,8 @@ def create_forecast_mode_training():
     #training_init_times = ["1900", "2000"] 
     #training_init_times = ["2030"] 
     #dates = ["20190510"] 
+    #dates = ["20200507"]
+    #training_init_times = ["2300"]
     
 
     #training_init_times = ["2300"]
@@ -540,7 +544,9 @@ def create_forecast_mode_training():
     #lead_times = [30, 60, 90, 120, 150, 180] 
     #lead_times = [60] #These are wofs lead times, btw. 
     #lead_times = [30, 90, 120] #priorities
-    lead_times = [60] 
+    #lead_times = [60] 
+    #lead_times = [30, 60, 90, 120] 
+    lead_times = [30, 60]
 
     #Get the data
     for lead_time in lead_times:
@@ -562,7 +568,6 @@ def create_forecast_mode_training():
                 already_done = does_full_npy_exist(date, init_time, mld.ps_init,\
                                     mld.wofs_files[0], mld.wofs_files[-1], \
                                     c.train_fcst_full_npy_dir)
-
 
                 #already_done_reps = does_reps_file_exist(date, mld.wofs_files[0], \
                 #                mld.wofs_files[-1], c.train_obs_full_npy_dir, \
@@ -610,6 +615,8 @@ def create_warning_mode_training():
 
     #dates = ["20190506"] 
     #start_times = ["2205", "2235", "2305", "2335", "0005"]
+    dates = ["20200507"]
+    start_times = ["2335", "2340", "2345", "2350"] 
 
     #NOTE: date is the before-00z date 
     for d in range(len(dates)):

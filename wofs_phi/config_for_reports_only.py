@@ -11,8 +11,8 @@
 #"forecast" for forecast mode in wofs viewer, 
 #"warning" for warning mode in wofs viewer, and
 
-mode = "warning" 
-#mode = "forecast"
+#mode = "warning" 
+mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 #NOTE: Not used, except in Ryan's code (with TORP stuff) 
@@ -45,12 +45,12 @@ png_outdir = ""
 
 #May or may not eventually use these
 #generate_forecasts = True #Generates the predictors array if True
-generate_forecasts = True
-generate_reports = False #Generates the reports file if True 
-save_npy = False #Tells whether or not to save the npy predictor files 
-save_ncdf = True #Tells whether or not to create/save the ncdf (realtime) files
+generate_forecasts = False
+generate_reports = True #Generates the reports file if True 
+save_npy = True #Tells whether or not to save the npy predictor files 
+save_ncdf = False #Tells whether or not to create/save the ncdf (realtime) files
 
-plot_forecasts = True #Tells whether or not to create the .png files for wofs viewer
+plot_forecasts = False #Tells whether or not to create the .png files for wofs viewer
 
 #Buffer time for a report in minutes: 
 #i.e., consider reports within this many minutes of the valid period
