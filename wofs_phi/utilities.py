@@ -13,6 +13,7 @@ import geopandas as gpd
 import datetime
 import math
 from scipy.ndimage import maximum_filter, minimum_filter
+import pickle
 
 def geodesic_point_buffer(lon, lat, km):
     proj_crs = ProjectedCRS(conversion = AzimuthalEquidistantConversion(lat, lon))
@@ -198,3 +199,5 @@ def save_data(save_dir, save_file, data, filetype):
             pkl.close()
         elif filetype == 'dat':
             data.tofile('%s/%s' %(save_dir, save_file))
+        elif filetype == 'png':
+            data.savefig('%s/%s' %(save_dir, save_file))

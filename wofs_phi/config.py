@@ -15,10 +15,11 @@ mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
+train_mode = 'train'
+train_type = 'obs_and_warnings'
 plot_in_training = True
 num_training_vars = 269
 
-train_type = 'obs'
 model_save_dir = '/work/ryan.martz/wofs_phi_data/%s_train/models/wofs_psv2_no_torp' %(train_type)
 validation_dir = '/work/ryan.martz/wofs_phi_data/%s_train/validation_fcsts/wofs_psv2_no_torp' %(train_type)
 test_dir = '/work/ryan.martz/wofs_phi_data/%s_train/test_fcsts/wofs_psv2_no_torp' %(train_type)
@@ -30,7 +31,7 @@ sample_rate = 0.1
 
 #Path to full_npy directory for training
 train_fcst_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/full_npy"
-train_obs_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/full_npy"
+train_obs_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/full_npy"
 
 #Path to dat directory for training
 train_fcst_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/dat"
@@ -87,7 +88,7 @@ predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially 
 #Fields not part of the standard wofs or ProbSevere fields that we'd like to include as extras 
 extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 
-obs_radii = ["30.0", "15.0", "7.5", "39.0"]
+obs_radii = ["30", "15", "7.5", "39"]
 final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
@@ -108,11 +109,9 @@ single_pt_file = "single_point_fields.txt"
 
 
 bottom_hour_inits = ["1730", "1830", "1930", "2030", "2130", "2230", "2330", "0030", "0130",\
-                     "0230", "0330", "0430", "0530", "0630", "0730", "0830", "0930", "1030",\
-                     "1130", "1230", "1330", "1430", "1530", "1630"]
+                     "0230", "0330", "0430"]
 top_hour_inits = ["1700", "1800", "1900", "2000", "2100", "2200", "2300", "0000", "0100",\
-                     "0200", "0300", "0400", "0500", "0600", "0700", "0800", "0900", "1000",\
-                     "1100", "1200", "1300", "1400", "1500", "1600"]
+                     "0200", "0300", "0400", "0500"]
 
 next_day_inits = ["0000", "0030", "0100", "0130", "0200", "0230", "0300", "0330", "0400", "0430", "0500"]
 
