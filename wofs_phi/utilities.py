@@ -173,6 +173,7 @@ def add_convolutions(var_method, var, footprint):
 def make_dt_from_str(date_str, time_str):
     '''returns datetime object from YYYYMMDD string and HHMM string'''
     dt_str = date_str + '-' + time_str
+
     dt = datetime.datetime.strptime(dt_str, '%Y%m%d-%H%M')
     return dt
 
@@ -201,3 +202,4 @@ def save_data(save_dir, save_file, data, filetype):
             data.tofile('%s/%s' %(save_dir, save_file))
         elif filetype == 'png':
             data.savefig('%s/%s' %(save_dir, save_file))
+
