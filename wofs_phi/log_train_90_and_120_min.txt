@@ -30497,3 +30497,57 @@ A value is trying to be set on a copy of a slice from a DataFrame
 
 See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
   haz_subset.rename(columns = cls.TORN_RENAME_DICT, inplace=True)
+/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/wofs_phi.py:961: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
+/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/wofs_phi.py:961: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
+/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/wofs_phi.py:961: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
+/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/wofs_phi.py:961: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
+/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/wofs_phi.py:961: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
+/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/wofs_phi.py:961: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
+/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/wofs_phi.py:961: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
+/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/wofs_phi.py:961: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
+/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/wofs_phi.py:961: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  in_df['latlon'] = [Point(in_df.iloc[a,1], in_df.iloc[a,2]) for a in range(len(in_df))]
