@@ -42,14 +42,14 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
 
 
 
-    #TODO: Maybe eventually pass this in ?? 
-
     vars_to_plot = ['wofsphi__hail__39km__%smin' %time_window,
                   'wofsphi__wind__39km__%smin' %time_window,
                   'wofsphi__tornado__39km__%smin' %time_window]
 
-
-    levels = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) 
+    #NOTE/TODO: Might need to make this different for tornadoes 
+    levels = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]) 
+    levels_tornado = np.array([0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35,\
+                                0.4, 0.45])  #Currently not used 
 
     extend_var = "max" 
 
@@ -144,6 +144,10 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
 
     #levels = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
     levels = np.array([0.1, 0.3, 0.5, 0.7, 0.9]) 
+
+    #TODO: Might have to make different contours for tornadoes
+    levels_torando = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35,\
+                        0.40, 0.45, 0.5]) 
 
     linewidths = np.linspace(0.1, 2.0, 9)
 

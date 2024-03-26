@@ -333,7 +333,14 @@ class MLGenerator:
 
         return nc_name
 
+    #TODO
+    @staticmethod
+    def get_sr_filename():
 
+        return 
+
+#TODO: 
+#Add self.sr_probs
 class MLPrediction:
     ''' This class handles the ML prediction'''
 
@@ -407,6 +414,9 @@ class MLPrediction:
                 #Set the probabilities 
                 mlp.set_probs(grid_obj)
 
+                #TODO: Set the SR probs (if we're using SR mapping)
+                #mlp.set_sr_probs()
+
                 #Append to list 
                 mlp_list.append(mlp) 
 
@@ -416,6 +426,12 @@ class MLPrediction:
                         mode_type) 
                 
 
+
+        return 
+
+
+    #TODO: 
+    def set_sr_probs(self):
 
         return 
 
@@ -463,10 +479,12 @@ class MLPrediction:
 
     #TODO: Will have to fully implmement this later -- and probably make this an instance method
     @staticmethod
-    def get_rf_filename(window_minutes, haz_name, mode_str):
+    def get_rf_filename(window_minutes, haz_name, radius, mode_str):
         '''Gets the full filenames to the rf file. Returns the pkl files 
             in the hazard order as given in the config file
             @window_minutes is the time window of the valid period in minutes
+            @haz_name is the name of the hazard (full); e.g., "tornado"
+            @radius is the radius string corresponding to the pkl filename
             @mode_str is either "forecast" for forecast mode or "warning" 
                 for warning mode 
 
@@ -484,7 +502,7 @@ class FinalNCFile:
 
 
 
-    def __init__(self, list_of_mlps, xr_list, outname, xr):
+    def __init__(self, list_of_mlps, xr_list, outname, xr, mode):
         '''@list_of_mlps is a list of MLPrediction objects needed for the current final netcdf file
             @xr_list is a list of xarray datasets that will be used to construct the final netcdf file
             @outname is the name of the ncdf output file 

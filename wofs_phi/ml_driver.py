@@ -534,7 +534,9 @@ def create_forecast_mode_training():
 
     #dates = dates[37:]
     #training_init_times = ["2300"] 
-    #dates = ["20190506"] 
+    dates = ["20190506"] 
+    #training_init_times = ["2200", "2300", "0000"]
+    training_init_times = ["2300"] 
     #dates = ["20190501"] 
     #training_init_times = ["1900", "2000"] 
     #training_init_times = ["2030"] 
@@ -556,7 +558,10 @@ def create_forecast_mode_training():
     #lead_times = [30, 90, 120] #priorities
     #lead_times = [60] 
     #lead_times = [30, 60, 90, 120] 
-    lead_times = [30, 60]
+    #lead_times = [30, 60]
+    #lead_times = [60]
+    #lead_times = [90, 120] 
+    lead_times = [30] 
 
     #Get the data
     for lead_time in lead_times:
@@ -568,11 +573,10 @@ def create_forecast_mode_training():
 
                 #Use this to drive the forecast 
                 ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
-                        mld.wofs_path, torpFiles, c.nc_outdir)
+                        mld.wofs_path, torpFiles, c.nc_outdir, mode)
 
                 #Check to make sure wofs files exist; if so we can generate. 
                 proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0]) 
-
 
                 proceed_ps = does_ps_exist(mld.ps_path, mld.ps_files[0])
 
@@ -626,10 +630,11 @@ def create_warning_mode_training():
     #Maybe for training in warning mode I'll pick a time at the top
     #of the hour, or something 
 
-    #dates = ["20190506"] 
+    dates = ["20190506"] 
     #start_times = ["2205", "2235", "2305", "2335", "0005"]
-    dates = ["20200507"]
-    start_times = ["2335", "2340", "2345", "2350"] 
+    start_times = ["2200", "2230", "2300", "2330", "0000"] 
+    #dates = ["20200507"]
+    #start_times = ["2335", "2340", "2345", "2350"] 
 
     #NOTE: date is the before-00z date 
     for d in range(len(dates)):
@@ -658,7 +663,7 @@ def create_warning_mode_training():
     
             #Use this to drive the forecast 
             ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
-                        mld.wofs_path, torpFiles, c.nc_outdir)
+                        mld.wofs_path, torpFiles, c.nc_outdir, mode)
 
             #Check to make sure wofs files exist; if so we can generate. 
             proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0])
