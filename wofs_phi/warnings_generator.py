@@ -71,7 +71,7 @@ class Warning_Grid():
         self.time_gdf = time_gdf.set_crs('EPSG:4326')
         
         gdf_tag = '%s_MAP' %(self.haz.upper())
-        self.haz_gdf = gpd.sjoin(self.time_gdf.loc[(self.time_gdf[gdf_tag] == str(1))], self.wofs_gdf, how='inner', predicate = 'contains')
+        self.haz_gdf = gpd.sjoin(self.time_gdf.loc[(self.time_gdf[gdf_tag].astype(float) > 0)], self.wofs_gdf, how='inner', predicate = 'contains')
     
     def set_binary_grid(self):
         
@@ -394,28 +394,29 @@ class Warning_GDF():
         return str(0) + str(num)
 
 def main():
-    hazards = ['hail', 'wind', 'tornado']
+    hazards = ['tornado']
     dates = np.genfromtxt('probSevere_dates.txt').astype(int).astype(str)
     starts = ['1730', '1800', '1830', '1900', '1930', '2000', '2030', '2100', '2130', '2200', '2230', '2300', '2330', '0000', '0030', '0100', '0130',
               '0200', '0230', '0300', '0330', '0400', '0430', '0500', '0530', '0600']
     lengths = [60]
+    leads = [30, 60, 90, 120, 150, 180]
     
     ####################################### Generate Warnings #######################################
     
-    #for haz in hazards:
-    #    for length in lengths:
-    #        for d in dates:
-    #            for s in starts:
-    #                start = utilities.make_dt_from_str(d, s)
-    #                warn_gen = Warning_Grid(haz, start, length)
-    #                warn_gen.set_hazard_grids()
-    #                print(d, s)
+    for haz in hazards:
+        for length in lengths:
+            for d in dates:
+                for s in starts:
+                    start = utilities.make_dt_from_str(d, s)
+                    warn_gen = Warning_Grid(haz, start, length)
+                    warn_gen.set_hazard_grids()
+                    print(d, s)
     
     ####################################### Sample Warnings #######################################
     
     for haz in hazards:
         for length in lengths:
-            for lead in [30, 60, 90, 120, 150, 180]:
+            for lead in leads:
                 wofs_spinup = 25
                 Warning_Grid.rand_sample_warnings(dates, starts, length, lead, wofs_spinup, haz)
 
