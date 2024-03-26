@@ -359,7 +359,10 @@ class MLTrainer:
         utilities.save_data(all_probs_save_dir, all_events_fname, all_events, 'npy')
         
         thresholds = np.round(np.arange(0,1.01,0.01), 2)
-        srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
+        if self.hazard == 'tornado':
+            srs = MLTrainer.get_srs(all_probs, all_events, thresholds, include_less_10 = True)
+        else:
+            srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
         df = pd.DataFrame({'raw_prob': thresholds, 'SR': srs})
         sr_map_dir, sr_map_fname = self.get_sr_map_fname_dir(fold)
         utilities.save_data(sr_map_dir, sr_map_fname, df, 'csv')
@@ -451,7 +454,10 @@ class MLTrainer:
                     if obs == []:
                         obs = np.zeros(MLTrainer.GRID_SHAPE_X*MLTrainer.GRID_SHAPE_Y)
                     plot_obs = np.array(obs).reshape(MLTrainer.GRID_SHAPE_X,MLTrainer.GRID_SHAPE_Y)
-                    levels = np.arange(0.1, 1.1, 0.1)
+                    if self.hazard == 'tornado':
+                        levels = np.array([0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3])
+                    else:
+                        levels = np.arange(0.1, 1.1, 0.1)
                     MLTrainer.plot_probs(srs2d, plot_obs, obs_color, levels, init_date_str, title_sr, plot_save_dir, plot_file_sr)
                     MLTrainer.plot_probs(probs_2d, plot_obs, obs_color, levels, init_date_str, title_raw, plot_save_dir, plot_file_raw)
                 
@@ -530,13 +536,13 @@ class MLTrainer:
             return sampled_obs_fname
             
         elif c.train_type == 'warnings':
-            full_npy_fname = '%s/length_%s/%s/%s_warnings_%s_v%s-%s.npy' %(c.train_warnings_full_1d_npy_dir, self.forecast_length,
+            full_npy_fname = '%s/length_%s/%s/%s_warnings_%s_v%s-%s_1d.npy' %(c.train_warnings_full_1d_npy_dir, self.forecast_length,
                                                                     self.hazard, self.hazard, day_str, start_str, end_str)
             if full_npy == True:
                 return full_npy_fname
             
             sampled_warnings_dir = '%s/length_%s/wofs_lead_%s/%s' %(c.train_warnings_sampled_1d_dat_dir, self.forecast_length,
-                                                                    self.wofs_spinup_time, self.hazard)
+                                                                    self.lead_time, self.hazard)
             sampled_warnings_fname = 'sampled_%s_warnings_%s_%s_%s_v%s-%s.dat' %(self.hazard, day_str, init_str, ps_time_str,
                                                                                  start_str, end_str)
             full_sampled_warnings_fname = '%s/%s' %(sampled_warnings_dir, sampled_warnings_fname)
@@ -557,6 +563,7 @@ class MLTrainer:
                                                                                              self.radius)
             
             full_sampled_events_fname = '%s/%s' %(sampled_events_dir, sampled_events_fname)
+            
             return full_sampled_events_fname
         
     
@@ -832,7 +839,7 @@ class MLTrainer:
         return sr_map_dir, sr_map_fname
     
     @staticmethod
-    def get_srs(f, x, thresholds):
+    def get_srs(f, x, thresholds, include_less_10 = False):
         srs = []
         for i in range(len(thresholds)):
             t = round(thresholds[i], 2)
@@ -850,13 +857,23 @@ class MLTrainer:
             if np.isnan(SR):
                 SR = 0
             
-            if t < 0.1:
-                srs.append(t)
-            else:
-                sr_max = max(srs)
+            if include_less_10:
+                if len(srs) == 0:
+                    sr_max = 0
+                else:
+                    sr_max = max(srs)
                 to_append = max(sr_max, SR, t)
                 srs.append(to_append)
-            #srs.append(SR)
+            else:
+                if t < 0.1:
+                    srs.append(t)
+                else:
+                    if len(srs) == 0:
+                        sr_max = 0
+                    else:
+                        sr_max = max(srs)
+                    to_append = max(sr_max, SR, t)
+                    srs.append(to_append)
         return srs
     
     @staticmethod
@@ -889,7 +906,7 @@ class MLTrainer:
         
         fig, ax = plt.subplots(subplot_kw={'projection': ccrs.PlateCarree()})
         ax.add_feature(cfeature.STATES, edgecolor='black', linewidth=1)
-        p = ax.contourf(wofs_grid.lons, wofs_grid.lats, probs, cmap='Blues', levels = levels, alpha = 0.8, antialiased = True, extend = 'both')
+        p = ax.contourf(wofs_grid.lons, wofs_grid.lats, probs, cmap='Blues', levels = levels, alpha = 0.8, antialiased = True, extend = 'max')
         ax.contour(wofs_grid.lons, wofs_grid.lats, obs, colors = obs_color, linewidths = 0.25)
         cbar_ax = fig.add_axes([0.155, 0.05, 0.712, 0.05])
         cbar = fig.colorbar(p, cax=cbar_ax, orientation='horizontal')
@@ -3489,19 +3506,13 @@ def main():
     ############################ Training Code below here ############################
     if c.is_train_mode:
         dates = list(np.genfromtxt('probSevere_dates.txt').astype(int).astype(str))
-        forecast_length = 60
-        lead_times = [30, 60]
-        num_folds = 5
-        wofs_spinup_time = 25
-        hazards = ['hail', 'wind', 'tornado']
-        radii = ['7.5', '15', '30']#['39']
-        for lead_time in lead_times:
+        for lead_time in c.train_lead_times:
             print('lead time: ', lead_time, ' min')
-            for radius in radii:
+            for radius in c.train_radii:
                 print('radius: ', radius, ' km')
-                for haz in hazards:
+                for haz in c.train_hazards:
                     print(haz)
-                    trainer = MLTrainer(dates, forecast_length, lead_time, num_folds, haz, wofs_spinup_time, radius)
+                    trainer = MLTrainer(dates, c.forecast_length, lead_time, c.num_folds, haz, c.wofs_spinup_time, radius)
                     trainer.do_training()
 
 if (__name__ == '__main__'):

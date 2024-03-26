@@ -15,8 +15,14 @@ mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 is_train_mode = True
-train_mode = 'train'
-train_type = 'obs_and_warnings'
+train_mode = 'validate'
+train_type = 'obs'
+train_radii = ['7.5', '15', '30', '39']
+train_hazards = ['tornado']
+train_lead_times = [30]
+forecast_length = 60
+num_folds = 5
+wofs_spinup_time = 25
 plot_in_training = True
 num_training_vars = 269
 
