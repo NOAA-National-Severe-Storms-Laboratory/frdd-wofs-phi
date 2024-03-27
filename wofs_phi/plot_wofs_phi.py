@@ -41,7 +41,6 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
 
 
 
-
     vars_to_plot = ['wofsphi__hail__39km__%smin' %time_window,
                   'wofsphi__wind__39km__%smin' %time_window,
                   'wofsphi__tornado__39km__%smin' %time_window]
@@ -49,7 +48,9 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
     #NOTE/TODO: Might need to make this different for tornadoes 
     levels = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]) 
     levels_tornado = np.array([0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35,\
-                                0.4, 0.45])  #Currently not used 
+                                0.4, 0.45]) 
+    #levels_tornado = np.array([0.05, 0.1, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40,\
+    #                            0.45, 0.50]) 
 
     extend_var = "max" 
 
@@ -61,15 +62,15 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
 
     #Define my colormap 
     #My custom cmap 
-    my_cmap = matplotlib.colors.ListedColormap([wc.blue3, wc.blue4, wc.orange3, wc.orange4,\
-                wc.red3, wc.red4, wc.red5, wc.red6, wc.red7]) 
+    #my_cmap = matplotlib.colors.ListedColormap([wc.blue3, wc.blue4, wc.orange3, wc.orange4,\
+    #            wc.red3, wc.red4, wc.red5, wc.red6, wc.red7]) 
 
     #Standard cmap 
     my_cmap = wc.wz_cmap
 
     alpha = 0.55
 
-    conf_kwargs_dict = {'levels': levels, 'extend': extend_var, 'cmap': my_cmap, 'alpha': alpha}
+    #conf_kwargs_dict = {'levels': levels, 'extend': extend_var, 'cmap': my_cmap, 'alpha': alpha}
 
     #png_save_name = "wofsphi__hail__30km__60min_{wofs_init_date}_{wofs_init_time}_{ps_init_time}_\
     #                        f{lead_time}.png"
@@ -91,6 +92,15 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
 
         png_save_name = "%s_f%s.png" %(v, str(lead_time_minutes).zfill(3))
 
+        if ("tornado" in v):
+            conf_kwargs_dict = {'levels': levels_tornado, 'extend': extend_var, 'cmap': my_cmap, 'alpha': alpha}
+
+
+        else: 
+            conf_kwargs_dict = {'levels': levels, 'extend': extend_var, 'cmap': my_cmap, 'alpha': alpha}
+
+
+
         plotter = WoFSPlotter(file_path=nc_fname, \
                                 outdir = png_outdir,\
                                 dt=c.wofs_update_rate,\
@@ -98,17 +108,21 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
                                 init_time = start_valid_dt,\
                                 valid_time = end_valid_dt)
 
+        
 
         #Mask out low or zero probabilities
         color_cont_data = data[v] 
         #color_cont_data[color_cont_data<0.01] = -1.0 
         color_cont_data[color_cont_data < levels[0]] = -1.0
         
+        ps_init_time_full_string = "ProbSevere Init: %s UTC" %ps_init_time_str
+
         plotter.plot(var_name=v, \
                         color_cont_data=color_cont_data,\
                         add_sharpness=True,\
                         color_contf_kws=conf_kwargs_dict,\
-                        save_name=png_save_name)
+                        save_name=png_save_name, \
+                        second_title=ps_init_time_full_string)
 
 
     #Close the plotter
@@ -146,8 +160,10 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
     levels = np.array([0.1, 0.3, 0.5, 0.7, 0.9]) 
 
     #TODO: Might have to make different contours for tornadoes
-    levels_torando = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35,\
-                        0.40, 0.45, 0.5]) 
+    levels_tornado = np.array([0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35,\
+                                0.4, 0.45]) 
+    #levels_tornado = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35,\
+    #                    0.40, 0.45, 0.5]) 
 
     linewidths = np.linspace(0.1, 2.0, 9)
 
@@ -177,7 +193,7 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
 
     #wofs_init_date_str, wofs_init_time_str = dattime_to_str(wofs_init_dt)
 
-    #__, ps_init_time_str = dattime_to_str(ps_init_dt)
+    __, ps_init_time_str = dattime_to_str(ps_init_dt)
 
     start_valid_date_str, start_valid_time_str = dattime_to_str(start_valid_dt) 
 
@@ -190,6 +206,18 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
         #                    ps_init_time_str, str(lead_time_minutes).zfill(3))
 
         png_save_name = "%s_%s%s.png" %(v, start_valid_date_str, start_valid_time_str)
+
+        if ("tornado" in v):
+            cont_kwargs_dict = {'levels': levels_tornado, 'extend': extend_var, 'linewidths': linewidths, \
+                        'linestyles': 'solid', 'colors': colors,\
+                        'alpha': alpha, 'add_labels': True}
+
+        else: 
+            cont_kwargs_dict = {'levels': levels, 'extend': extend_var, 'linewidths': linewidths, \
+                        'linestyles': 'solid', 'colors': colors,\
+                        'alpha': alpha, 'add_labels': True}
+
+        ps_init_time_full_string = "ProbSevere Init: %s UTC" %ps_init_time_str
 
         plotter = WoFSPlotter(file_path=nc_fname, \
                                 outdir = png_outdir,\
@@ -209,8 +237,8 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
                         line_cont_kws=cont_kwargs_dict,\
                         color_cont_data=None,\
                         add_text=True,\
-                        save_name=png_save_name)
-
+                        save_name=png_save_name,
+                        second_title=ps_init_time_full_string)
 
 
 

@@ -793,6 +793,7 @@ def main():
 
     #SET mode here 
     mode_to_generate = "forecast"
+    #mode_to_generate = "warning"
     
 
     if (mode_to_generate == "forecast"):
