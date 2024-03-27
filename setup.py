@@ -21,7 +21,7 @@ setup(
     description='Official WoFS-Phi Repository', 
     long_description=long_description,
     long_description_content_type='text/markdown',  
-    url='https://github.com/NOAA-National-Severe-Storms-Laboratory/frdd-wofs-phihttps://github.com/WarnOnForecast/wofs_ml_severe', 
+    url='https://github.com/NOAA-National-Severe-Storms-Laboratory/frdd-wofs-phi', 
     author='NOAA National Severe Storms Laboratory', 
     classifiers=[  # Optional
         # How mature is this project? Common values are
@@ -39,7 +39,7 @@ setup(
 
     packages=['wofs_phi'],  # Required
 
-    python_requires='>=3.8, <4',
+    python_requires='>=3.10, <4',
     package_dir={'wofs_ml_severe': 'wofs_ml_severe'},
     project_urls={  # Optional
         'Bug Reports': 'https://github.com/NOAA-National-Severe-Storms-Laboratory/frdd-wofs-phi/issues',
