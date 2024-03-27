@@ -32,9 +32,9 @@ setup(
         'Intended Audience :: Scientists',
         'Programming Language :: Python :: 3'
     ],
-    install_requires = [
-        'python>=3.10',
-    ],
+    # install_requires = [
+    #     'python>=3.10',
+    # ],
     package_data={'wofs_phi' : ['*.txt']},
 
     packages=['wofs_phi'],  # Required
