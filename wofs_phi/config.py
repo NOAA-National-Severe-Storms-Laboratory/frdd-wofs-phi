@@ -21,6 +21,13 @@ is_train_mode = True
 
 train_mode = 'train'
 train_type = 'obs_and_warnings'
+train_radii = ['7.5', '15', '30', '39']
+train_hazards = ['tornado']
+train_lead_times = [30, 60]
+forecast_length = 60
+num_folds = 5
+wofs_spinup_time = 25
+
 plot_in_training = True
 
 num_training_vars = 269
@@ -85,6 +92,9 @@ train_warnings_csv_dir = '/work/ryan.martz/wofs_phi_data/training_data/warnings/
 train_warnings_full_2d_npy_dir = '/work/ryan.martz/wofs_phi_data/training_data/warnings/full_2d_warnings'
 train_warnings_full_1d_npy_dir = '/work/ryan.martz/wofs_phi_data/training_data/warnings/full_1d_warnings'
 train_warnings_sampled_1d_dat_dir = '/work/ryan.martz/wofs_phi_data/training_data/warnings/sampled_1d_warnings'
+
+#need to change this to reflect the real time directory!
+real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv'
 
 #Path to the reports coordinates directory -- i.e., where are the coords.txt 
 #files that need to be read in during training? 

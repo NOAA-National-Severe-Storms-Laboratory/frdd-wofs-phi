@@ -78,7 +78,7 @@ class MLGenerator:
 
 
     def __init__(self, wofs_files, ps_files, ps_path, wofs_path, torp_files, nc_outdir,\
-                    mode): 
+                    mode, train_type): 
 
         ''' @wofs_files is the list of wofs_files to use for the prediction (in chronological order,
             beginning with the start of the prediction window/valid period and ending with the end of
@@ -103,7 +103,8 @@ class MLGenerator:
         self.wofs_path = wofs_path
         self.nc_outdir = nc_outdir
         self.torp_files = torp_files
-        self.mode = mode 
+        self.mode = mode
+        self.train_type = train_type
 
 
     def generate(self):
@@ -193,7 +194,7 @@ class MLGenerator:
                 #NOTE: All radii and hazards will go into the same ncdf file 
 
                 MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array, \
-                        wofs.xarr, self.mode) 
+                        wofs.xarr, self.mode, self.train_type) 
 
                 if (c.plot_forecasts == True):
                     
@@ -333,11 +334,14 @@ class MLGenerator:
 
         return nc_name
 
-    #TODO
     @staticmethod
-    def get_sr_filename():
-
-        return 
+    def get_sr_filename(hazard, startmin, length, train_type, radius):
+        endmin = startmin + length
+        if train_type == 'warnings':
+            sr_map_fname = '%s_%s-%smin_%s_sr_map.csv' %(train_type, startmin, endmin, hazard)
+        else:
+            sr_map_fname = '%s_%skm_%s-%smin_%s_sr_map.csv' %(train_type, radius, startmin, endmin, hazard)
+        return sr_map_fname
 
 #TODO: 
 #Add self.sr_probs
@@ -354,7 +358,8 @@ class MLPrediction:
                 or "warning" if trained on warnings)
             @radius_float is the radius in float form (e.g., 7.5, 15.0, 30.0, etc.; 
                 or 0.0 if trained on warnings)
-            @probs is the 2-d np array of probabilities 
+            @probs is the 2-d np array of probabilities
+            @probs is the 1-d np array of probabilities
             @rf_model is the unpickled RF model used to make predictions 
             @predictor_arr is the array of predictors (in format 
                 (rows: examples, columns: predictors))
@@ -368,7 +373,7 @@ class MLPrediction:
         self.time_window = time_window 
         self.radius_str = radius_str
         self.radius_float = radius_float
-        self.probs = probs 
+        self.probs = probs
         self.rf_model = rf_model 
         self.predictor_arr = predictor_arr
         self.radius_str_ncdf = radius_str_ncdf
@@ -378,7 +383,7 @@ class MLPrediction:
 
     @classmethod
     def create_rf_predictions(cls, specs, grid_obj, predictor_array, wofs_xarr, \
-                    mode_type):
+                    mode_type, train_type):
         '''Factory method for creating RF predictions.
             @specs is a ForecastSpecs object
             @grid_obj is a Grid object
@@ -401,7 +406,7 @@ class MLPrediction:
                 radius_float = c.obs_radii_float[r] 
                 radius_str_ncdf = c.final_str_obs_radii[r] 
 
-                #Get filename 
+                #Get filename - change to use "train_type" variable
                 rf_filename = MLPrediction.get_rf_filename(specs.forecast_window,\
                                 hazard, radius_str, mode_type) 
 
@@ -415,7 +420,8 @@ class MLPrediction:
                 mlp.set_probs(grid_obj)
 
                 #TODO: Set the SR probs (if we're using SR mapping)
-                #mlp.set_sr_probs()
+                startmin = int((specs.start_valid_dt - specs.wofs_init_time_dt).seconds/60)
+                mlp.set_sr_probs(startmin, train_type, radius_float)
 
                 #Append to list 
                 mlp_list.append(mlp) 
@@ -431,9 +437,28 @@ class MLPrediction:
 
 
     #TODO: 
-    def set_sr_probs(self):
-
-        return 
+    def set_sr_probs(self, startmin, train_type, radius):
+        
+        sr_map_fname = MLGenerator.get_sr_filename(self.hazard, startmin, self.forecast_window, train_type, radius)
+        sr_map_df = pd.read_csv('%s/%s' %(c.real_time_sr_map_dir, sr_map_fname))
+        
+        probs = np.array(self.probs1d)
+        zero_indices = np.where(probs < 0.01)
+        probs[zero_indices] = 0
+        probs = np.around(probs, 2)
+        srs1d = np.zeros(np.array(probs).size)
+        sr_dict = {}
+        thresholds = sr_map_df.raw_prob.values
+        sr_mappings = sr_map_df.SR.values
+        for i in range(len(thresholds)):
+            t = thresholds[i]
+            sr = sr_mappings[i]
+            sr_dict[str(round(t,2))] = sr
+        for i in range(len(probs)):
+            srs1d[i] = sr_dict[str(probs[i])]
+        self.srs2d = srs1d.reshape(MLTrainer.GRID_SHAPE_X, MLTrainer.GRID_SHAPE_Y)
+        
+        return
 
 
     def set_probs(self, curr_grid):
@@ -446,7 +471,8 @@ class MLPrediction:
                             one_d_probs, curr_grid.ny, curr_grid.nx) 
 
         #Set the probs attribute 
-        self.probs = two_d_probs 
+        self.probs = two_d_probs
+        self.probs1d = one_d_probs
 
         return 
 
@@ -1192,7 +1218,10 @@ class MLTrainer:
         utilities.save_data(all_probs_save_dir, all_events_fname, all_events, 'npy')
         
         thresholds = np.round(np.arange(0,1.01,0.01), 2)
-        srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
+        if self.hazard == 'tornado':
+            srs = MLTrainer.get_srs(all_probs, all_events, thresholds, include_less_10 = True)
+        else:
+            srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
         df = pd.DataFrame({'raw_prob': thresholds, 'SR': srs})
         sr_map_dir, sr_map_fname = self.get_sr_map_fname_dir(fold)
         utilities.save_data(sr_map_dir, sr_map_fname, df, 'csv')
@@ -1284,7 +1313,10 @@ class MLTrainer:
                     if obs == []:
                         obs = np.zeros(MLTrainer.GRID_SHAPE_X*MLTrainer.GRID_SHAPE_Y)
                     plot_obs = np.array(obs).reshape(MLTrainer.GRID_SHAPE_X,MLTrainer.GRID_SHAPE_Y)
-                    levels = np.arange(0.1, 1.1, 0.1)
+                    if self.hazard == 'tornado':
+                        levels = np.arange(0.05, 0.55, 0.05)
+                    else:
+                        levels = np.arange(0.1, 1.1, 0.1)
                     MLTrainer.plot_probs(srs2d, plot_obs, obs_color, levels, init_date_str, title_sr, plot_save_dir, plot_file_sr)
                     MLTrainer.plot_probs(probs_2d, plot_obs, obs_color, levels, init_date_str, title_raw, plot_save_dir, plot_file_raw)
                 
@@ -1364,13 +1396,13 @@ class MLTrainer:
             return sampled_obs_fname
             
         elif c.train_type == 'warnings':
-            full_npy_fname = '%s/length_%s/%s/%s_warnings_%s_v%s-%s.npy' %(c.train_warnings_full_1d_npy_dir, self.forecast_length,
+            full_npy_fname = '%s/length_%s/%s/%s_warnings_%s_v%s-%s_1d.npy' %(c.train_warnings_full_1d_npy_dir, self.forecast_length,
                                                                     self.hazard, self.hazard, day_str, start_str, end_str)
             if full_npy == True:
                 return full_npy_fname
             
             sampled_warnings_dir = '%s/length_%s/wofs_lead_%s/%s' %(c.train_warnings_sampled_1d_dat_dir, self.forecast_length,
-                                                                    self.wofs_spinup_time, self.hazard)
+                                                                    self.lead_time, self.hazard)
             sampled_warnings_fname = 'sampled_%s_warnings_%s_%s_%s_v%s-%s.dat' %(self.hazard, day_str, init_str, ps_time_str,
                                                                                  start_str, end_str)
             full_sampled_warnings_fname = '%s/%s' %(sampled_warnings_dir, sampled_warnings_fname)
@@ -1391,6 +1423,7 @@ class MLTrainer:
                                                                                              self.radius)
             
             full_sampled_events_fname = '%s/%s' %(sampled_events_dir, sampled_events_fname)
+            
             return full_sampled_events_fname
         
     
@@ -1666,7 +1699,7 @@ class MLTrainer:
         return sr_map_dir, sr_map_fname
     
     @staticmethod
-    def get_srs(f, x, thresholds):
+    def get_srs(f, x, thresholds, include_less_10 = False):
         srs = []
         for i in range(len(thresholds)):
             t = round(thresholds[i], 2)
@@ -1684,13 +1717,23 @@ class MLTrainer:
             if np.isnan(SR):
                 SR = 0
             
-            if t < 0.1:
-                srs.append(t)
-            else:
-                sr_max = max(srs)
+            if include_less_10:
+                if len(srs) == 0:
+                    sr_max = 0
+                else:
+                    sr_max = max(srs)
                 to_append = max(sr_max, SR, t)
                 srs.append(to_append)
-            #srs.append(SR)
+            else:
+                if t < 0.1:
+                    srs.append(t)
+                else:
+                    if len(srs) == 0:
+                        sr_max = 0
+                    else:
+                        sr_max = max(srs)
+                    to_append = max(sr_max, SR, t)
+                    srs.append(to_append)
         return srs
     
     @staticmethod
@@ -1723,7 +1766,7 @@ class MLTrainer:
         
         fig, ax = plt.subplots(subplot_kw={'projection': ccrs.PlateCarree()})
         ax.add_feature(cfeature.STATES, edgecolor='black', linewidth=1)
-        p = ax.contourf(wofs_grid.lons, wofs_grid.lats, probs, cmap='Blues', levels = levels, alpha = 0.8, antialiased = True, extend = 'both')
+        p = ax.contourf(wofs_grid.lons, wofs_grid.lats, probs, cmap='Blues', levels = levels, alpha = 0.8, antialiased = True, extend = 'max')
         ax.contour(wofs_grid.lons, wofs_grid.lats, obs, colors = obs_color, linewidths = 0.25)
         cbar_ax = fig.add_axes([0.155, 0.05, 0.712, 0.05])
         cbar = fig.colorbar(p, cax=cbar_ax, orientation='horizontal')
@@ -4300,6 +4343,7 @@ def main():
     ps_direc = "/work/eric.loken/wofs/probSevere"
 
     mode = "forecast" #Now has to be a parameter that gets passed in
+    train_type = 'obs'
 
 
     #TODO: We'd need to develop some code (maybe in an outside script, etc. to determine these files/filenames
@@ -4369,7 +4413,7 @@ def main():
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033456_KUDX_tordetections.csv']
 
     ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, c.nc_outdir,\
-                            mode)
+                            mode, train_type)
 
 
     #Do the generation 
@@ -4378,19 +4422,13 @@ def main():
     ############################ Training Code below here ############################
     if c.is_train_mode:
         dates = list(np.genfromtxt('probSevere_dates.txt').astype(int).astype(str))
-        forecast_length = 60
-        lead_times = [30, 60]
-        num_folds = 5
-        wofs_spinup_time = 25
-        hazards = ['hail', 'wind', 'tornado']
-        radii = ['7.5', '15', '30']#['39']
-        for lead_time in lead_times:
+        for lead_time in c.train_lead_times:
             print('lead time: ', lead_time, ' min')
-            for radius in radii:
+            for radius in c.train_radii:
                 print('radius: ', radius, ' km')
-                for haz in hazards:
+                for haz in c.train_hazards:
                     print(haz)
-                    trainer = MLTrainer(dates, forecast_length, lead_time, num_folds, haz, wofs_spinup_time, radius)
+                    trainer = MLTrainer(dates, c.forecast_length, lead_time, c.num_folds, haz, c.wofs_spinup_time, radius)
                     trainer.do_training()
 
 if (__name__ == '__main__'):
