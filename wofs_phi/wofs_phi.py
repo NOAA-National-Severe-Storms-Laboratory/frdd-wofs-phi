@@ -93,7 +93,9 @@ class MLGenerator:
 
             @nc_outdir is the directory to save the final .ncdf files to 
         
-            @mode is a string: either "forecast" or "warning" -- tells which mode to run in 
+            @mode is a string: either "forecast" or "warning" -- tells which mode to run in
+            
+            @train_type is a string: one of 'obs', 'warnings', or 'obs_and_warnings' -- tells the type of model/SR map to use
             
         '''
 
@@ -350,7 +352,7 @@ class MLPrediction:
 
 
     def __init__(self, rf_filename, hazard, time_window, radius_str, radius_float,\
-                     probs, rf_model, predictor_arr, radius_str_ncdf):
+                     probs, probs1d, srs2d, rf_model, predictor_arr, radius_str_ncdf):
         '''@rf_filename is the full name of the pickled model (including the path)
             @hazard is the string hazard name (e.g., "wind", "hail", or "tornado") 
             @time_window is the length of the forecast time window in minutes 
@@ -359,7 +361,8 @@ class MLPrediction:
             @radius_float is the radius in float form (e.g., 7.5, 15.0, 30.0, etc.; 
                 or 0.0 if trained on warnings)
             @probs is the 2-d np array of probabilities
-            @probs is the 1-d np array of probabilities
+            @probs1d is the 1-d np array of probabilities
+            @srs2d is the 2-d np array of SR mapped probabilities
             @rf_model is the unpickled RF model used to make predictions 
             @predictor_arr is the array of predictors (in format 
                 (rows: examples, columns: predictors))
@@ -374,6 +377,8 @@ class MLPrediction:
         self.radius_str = radius_str
         self.radius_float = radius_float
         self.probs = probs
+        self.probs1d = probs1d
+        self.srs2d = srs2d
         self.rf_model = rf_model 
         self.predictor_arr = predictor_arr
         self.radius_str_ncdf = radius_str_ncdf
@@ -395,6 +400,8 @@ class MLPrediction:
         '''
 
         zero_probs_2d = np.zeros((grid_obj.ny, grid_obj.nx))
+        zero_srs_2d = zero_probs2d
+        zero_probs_1d = np.zeros(grid_obj.ny*grid_obj.nx)
         
         #Will hold the set of mlp objects over the different hazards and radii 
         mlp_list = [] 
@@ -414,7 +421,7 @@ class MLPrediction:
                 rfModel = MLPrediction.load_rf_model(rf_filename) 
                 #Create new MLPrediction object 
                 mlp = MLPrediction(rf_filename, hazard, specs.forecast_window, radius_str, radius_float, \
-                            zero_probs_2d, rfModel, predictor_array, radius_str_ncdf)
+                            zero_probs_2d, zero_probs_1d, zero_srs_2d, rfModel, predictor_array, radius_str_ncdf)
 
                 #Set the probabilities 
                 mlp.set_probs(grid_obj)
