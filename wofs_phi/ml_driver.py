@@ -510,9 +510,8 @@ class WofsFile:
 
 
 #For forecast mode 
-def create_forecast_mode_training():
+def create_forecast_mode_training(train_types):
     ''' Creates training files'''
-
 
     mode = "forecast" 
 
@@ -573,7 +572,7 @@ def create_forecast_mode_training():
 
                 #Use this to drive the forecast 
                 ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
-                        mld.wofs_path, torpFiles, c.nc_outdir, mode)
+                        mld.wofs_path, torpFiles, c.nc_outdir, mode, train_types)
 
                 #Check to make sure wofs files exist; if so we can generate. 
                 proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0]) 
@@ -608,7 +607,7 @@ def create_forecast_mode_training():
     return 
 
 
-def create_warning_mode_training():
+def create_warning_mode_training(train_types):
     '''Will obtain the proper files, etc. when we're in warning mode.
         NOTE: In real time, Warning mode will be driven purely by the actual time.
         Similarly, in training mode, we will loop over a series of start times 
@@ -663,7 +662,7 @@ def create_warning_mode_training():
     
             #Use this to drive the forecast 
             ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
-                        mld.wofs_path, torpFiles, c.nc_outdir, mode)
+                        mld.wofs_path, torpFiles, c.nc_outdir, mode, train_types)
 
             #Check to make sure wofs files exist; if so we can generate. 
             proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0])
@@ -794,13 +793,17 @@ def main():
     #SET mode here 
     mode_to_generate = "forecast"
     #mode_to_generate = "warning"
+
+    #SET train type here 
+    #options: "obs", "warnings", or "obs_and_warnings"
+    train_types = ["obs", "obs_and_warnings"]
     
 
     if (mode_to_generate == "forecast"):
-        create_forecast_mode_training()
+        create_forecast_mode_training(train_types)
 
     elif (mode_to_generate == "warning"):
-        create_warning_mode_training() 
+        create_warning_mode_training(train_types) 
 
     #date = "20190430" #date before 00z 
     #window = 60

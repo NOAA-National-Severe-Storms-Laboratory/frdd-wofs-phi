@@ -78,7 +78,7 @@ class MLGenerator:
 
 
     def __init__(self, wofs_files, ps_files, ps_path, wofs_path, torp_files, nc_outdir,\
-                    mode, train_type): 
+                    mode, train_types): 
 
         ''' @wofs_files is the list of wofs_files to use for the prediction (in chronological order,
             beginning with the start of the prediction window/valid period and ending with the end of
@@ -95,8 +95,9 @@ class MLGenerator:
         
             @mode is a string: either "forecast" or "warning" -- tells which mode to run in
             
-            @train_type is a string: one of 'obs', 'warnings', or 'obs_and_warnings' -- tells the type of model/SR map to use
-            
+            @train_types is a list of strings: 
+                each element is 'obs', 'warnings', or 'obs_and_warnings' -- 
+                tells the types of models to use in the ncdf file 
         '''
 
         self.wofs_files = wofs_files
@@ -106,7 +107,7 @@ class MLGenerator:
         self.nc_outdir = nc_outdir
         self.torp_files = torp_files
         self.mode = mode
-        self.train_type = train_type
+        self.train_types = train_types
 
 
     def generate(self):
@@ -196,7 +197,7 @@ class MLGenerator:
                 #NOTE: All radii and hazards will go into the same ncdf file 
 
                 MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array, \
-                        wofs.xarr, self.mode, self.train_type) 
+                        wofs.xarr, self.mode, self.train_types) 
 
                 if (c.plot_forecasts == True):
                     
@@ -352,7 +353,8 @@ class MLPrediction:
 
 
     def __init__(self, rf_filename, hazard, time_window, radius_str, radius_float,\
-                     probs, probs1d, srs2d, rf_model, predictor_arr, radius_str_ncdf):
+                     probs, probs1d, srs2d, rf_model, predictor_arr, radius_str_ncdf,\
+                     train_type):
         '''@rf_filename is the full name of the pickled model (including the path)
             @hazard is the string hazard name (e.g., "wind", "hail", or "tornado") 
             @time_window is the length of the forecast time window in minutes 
@@ -368,6 +370,11 @@ class MLPrediction:
                 (rows: examples, columns: predictors))
             @radius_str_ncdf is the radius in string format for the variables in the 
                 netcdf files 
+            @train_type is a string indicating how the training was done (i.e., what
+                type of model to use.
+                "obs" for only LSRs, 
+                "warnings" for only warnings,
+                "obs_and_warnings" for LSRs + warnings.
         '''
 
 
@@ -382,13 +389,14 @@ class MLPrediction:
         self.rf_model = rf_model 
         self.predictor_arr = predictor_arr
         self.radius_str_ncdf = radius_str_ncdf
+        self.train_type = train_type 
 
         return 
 
 
     @classmethod
     def create_rf_predictions(cls, specs, grid_obj, predictor_array, wofs_xarr, \
-                    mode_type, train_type):
+                    mode_type, train_types):
         '''Factory method for creating RF predictions.
             @specs is a ForecastSpecs object
             @grid_obj is a Grid object
@@ -397,41 +405,49 @@ class MLPrediction:
             @wofs_xarr is the wofs xarray with the metadata added 
             @mode_type is either "forecast" for forecast mode or "warning" for
                 warning mode 
+            @train_types is an array of strings indicating how training was done: 
+                "obs" for only lsrs, 
+                "warnings" for only warnings,
+                "obs_and_warnings" for both obs and warnings
+                These are the training types that will be included in the final
+                netcdf file 
         '''
 
         zero_probs_2d = np.zeros((grid_obj.ny, grid_obj.nx))
-        zero_srs_2d = zero_probs2d
+        zero_srs_2d = zero_probs_2d
         zero_probs_1d = np.zeros(grid_obj.ny*grid_obj.nx)
         
         #Will hold the set of mlp objects over the different hazards and radii 
         mlp_list = [] 
 
-        for hazard in c.final_hazards:
+        for train_type in train_types: 
+            for hazard in c.final_hazards:
+    
+                for r in range(len(c.obs_radii_str)):
+                    radius_str = c.obs_radii_str[r]
+                    radius_float = c.obs_radii_float[r] 
+                    radius_str_ncdf = c.final_str_obs_radii[r] 
+                    radius_float_str = c.obs_radii[r] 
 
-            for r in range(len(c.obs_radii_str)):
-                radius_str = c.obs_radii_str[r]
-                radius_float = c.obs_radii_float[r] 
-                radius_str_ncdf = c.final_str_obs_radii[r] 
-
-                #Get filename - change to use "train_type" variable
-                rf_filename = MLPrediction.get_rf_filename(specs.forecast_window,\
-                                hazard, radius_str, mode_type) 
+                    #Get filename - TODO: change to use "train_type" variable
+                    rf_filename = MLPrediction.get_rf_filename(specs, \
+                                hazard, radius_float_str, mode_type, train_type) 
 
 
-                rfModel = MLPrediction.load_rf_model(rf_filename) 
-                #Create new MLPrediction object 
-                mlp = MLPrediction(rf_filename, hazard, specs.forecast_window, radius_str, radius_float, \
-                            zero_probs_2d, zero_probs_1d, zero_srs_2d, rfModel, predictor_array, radius_str_ncdf)
+                    rfModel = MLPrediction.load_rf_model(rf_filename) 
+                    #Create new MLPrediction object 
+                    mlp = MLPrediction(rf_filename, hazard, specs.forecast_window, radius_str, radius_float, \
+                            zero_probs_2d, zero_probs_1d, zero_srs_2d, rfModel, predictor_array, \
+                            radius_str_ncdf, train_type)
 
-                #Set the probabilities 
-                mlp.set_probs(grid_obj)
+                    #Set the probabilities 
+                    mlp.set_probs(grid_obj)
 
-                #TODO: Set the SR probs (if we're using SR mapping)
-                startmin = int((specs.start_valid_dt - specs.wofs_init_time_dt).seconds/60)
-                mlp.set_sr_probs(startmin, train_type, radius_float)
+                    #TODO: Set the SR probs (if we're using SR mapping)
+                    mlp.set_sr_probs(specs, train_type, radius_float)
 
-                #Append to list 
-                mlp_list.append(mlp) 
+                    #Append to list 
+                    mlp_list.append(mlp) 
 
 
         #Once we have a list of mlp objects, save to netcdf file 
@@ -443,10 +459,15 @@ class MLPrediction:
         return 
 
 
-    #TODO: 
-    def set_sr_probs(self, startmin, train_type, radius):
+    def set_sr_probs(self, specs_obj, train_type, radius):
+        #Maps the raw probabilities to success ratios and assigns to class attribute
+        #srs2d
+        #@specs_obj is a forecast specs object
+    
+        #startmin = int((specs_obj.start_valid_dt - specs_obj.wofs_init_time_dt).seconds/60)
+        startmin = specs_obj.get_minutes_from_wofs_init_to_start_valid()
         
-        sr_map_fname = MLGenerator.get_sr_filename(self.hazard, startmin, self.forecast_window, train_type, radius)
+        sr_map_fname = MLGenerator.get_sr_filename(self.hazard, startmin, self.time_window, train_type, radius)
         sr_map_df = pd.read_csv('%s/%s' %(c.real_time_sr_map_dir, sr_map_fname))
         
         probs = np.array(self.probs1d)
@@ -512,19 +533,40 @@ class MLPrediction:
 
     #TODO: Will have to fully implmement this later -- and probably make this an instance method
     @staticmethod
-    def get_rf_filename(window_minutes, haz_name, radius, mode_str):
+    def get_rf_filename(specs_obj, haz_name, radius, mode_str, train_string):
         '''Gets the full filenames to the rf file. Returns the pkl files 
             in the hazard order as given in the config file
-            @window_minutes is the time window of the valid period in minutes
+            @specs_obj is a ForecastSpecs object for the given situation 
             @haz_name is the name of the hazard (full); e.g., "tornado"
             @radius is the radius string corresponding to the pkl filename
             @mode_str is either "forecast" for forecast mode or "warning" 
                 for warning mode 
+            @train_string tells how the training was done: 
+                "obs" for only trained on LSRs,
+                "warnings" for only warnings,
+                "obs_and_warnings" for LSRs plus warnings 
 
         '''
 
-        pkl_filename = "%s/wofsphi_%s_%smin_%s_mode_r%skm.pkl" \
-                        %(c.rf_dir, haz_name, window_minutes, mode_str, radius)
+        #OLD: 
+        #pkl_filename = "%s/wofsphi_%s_%smin_%s_mode_r%skm_%s.pkl" \
+        #                %(c.rf_dir, haz_name, window_minutes, mode_str, radius,\
+        #                    train_string)
+
+        start_init = specs_obj.get_minutes_from_wofs_init_to_start_valid()
+        end_init = specs_obj.get_minutes_from_wofs_init_to_end_valid() 
+
+        if (mode_str == "warning"):
+
+            pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window30-90_r%skm_fold0.pkl"\
+                        %(c.rf_dir, train_string, haz_name, specs_obj.forecast_window, radius)
+
+        else: 
+
+            pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window%s-%s_r%skm_fold0.pkl"\
+                        %(c.rf_dir, train_string, haz_name, specs_obj.forecast_window, start_init,\
+                        end_init, radius)
+
 
 
         return pkl_filename
@@ -610,7 +652,10 @@ class FinalNCFile:
     def set_xr_list(self, grid_obj):
         '''Sets the xr_list attribute
             @grid_obj is a Grid object
-            @wofs_xarray is an xarray dataset with the wofs metadata added'''
+            @wofs_xarray is an xarray dataset with the wofs metadata added
+            @trainType is the train_type string: "obs", "warnings", or
+                "obs_and_warnings"
+        '''
 
         xrList = []         
 
@@ -623,14 +668,17 @@ class FinalNCFile:
             new_xr = xr.Dataset(data_vars=None, coords={"y": (range(grid_obj.ny)), \
                         "x": (range(grid_obj.nx))})
 
-            new_xr[var_name] = (["y", "x"], mlp_obj.probs)
+            #NOTE: This is what we'd use if we just use the raw probs
+            #new_xr[var_name] = (["y", "x"], mlp_obj.probs)
+
+            #This is what we use if we want to use the SR-mapped probs
+            new_xr[var_name] = (["y", "x"], mlp_obj.srs2d)
 
             #Append to list 
             xrList.append(new_xr) 
 
         #Set the instance attribute 
         self.xr_list = xrList
-
 
         return 
 
@@ -668,10 +716,13 @@ class FinalNCFile:
     @staticmethod
     def get_nc_var_name(mlp_object):
         '''Returns the variable name (in the xarray and eventually the ncdf file
-            based on a given MLPrediction object.'''
+            based on a given MLPrediction object.
+            @mlp_object is the MLPrediction object, 
+        '''
 
-        varName = "wofsphi__%s__%skm__%smin" %(mlp_object.hazard, \
-            mlp_object.radius_str_ncdf, mlp_object.time_window)
+        varName = "wofsphi__%s__%skm__%smin__%s" %(mlp_object.hazard, \
+            mlp_object.radius_str_ncdf, mlp_object.time_window, \
+            mlp_object.train_type)
 
 
         return varName
@@ -3463,6 +3514,22 @@ class ForecastSpecs:
 
         return new_specs
 
+
+
+    def get_minutes_from_wofs_init_to_start_valid(self):
+        '''Returns the difference between the start valid time and wofs initialization time
+            in minutes'''
+        
+
+        return ForecastSpecs.subtract_dt(self.start_valid_dt, self.wofs_init_time_dt, True)
+
+
+    def get_minutes_from_wofs_init_to_end_valid(self):
+        '''Returns the difference between the end valid time and wofs initialization
+        time in minutes '''
+
+
+        return ForecastSpecs.subtract_dt(self.end_valid_dt, self.wofs_init_time_dt, True) 
 
     @staticmethod 
     def get_date_before_00z(wofsInitTimeDT, nextDayWofsInits):
