@@ -338,7 +338,7 @@ def save_predictors(full_pred_array, samp_rate, fGrid, full_npy_outdir, npy_file
         #Convert to float 32
         full_predictions = np.float32(full_pred_array)
         sampled_predictions = np.float32(sampled_predictions)
-
+        
         #Save to file: 
         np.save("%s/%s" %(full_npy_outdir, npy_filename), full_predictions) 
         sampled_predictions.tofile("%s/%s" %(dat_outdir, dat_filename))

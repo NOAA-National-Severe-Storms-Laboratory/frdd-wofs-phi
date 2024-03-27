@@ -193,6 +193,7 @@ class Warning_Grid():
     def rand_sample_warnings(dates, starts, length, lead, wofs_spinup, haz):
         for d in dates:
             for s in starts:
+                start = utilities.make_dt_from_str(d, s)
                 init_str, ps_time_str, start_str, end_str = Warning_Grid.get_file_specs(d, s, length, lead, wofs_spinup)
                 
                 rand_inds_filename = "%s/rand_inds_%s_%s_%s_v%s-%s.npy" %(c.train_fcst_dat_dir, d, init_str,
@@ -351,9 +352,8 @@ class Warning_GDF():
                     simplified_gdf.SIG_MAP.iat[i] = 1
                     simplified_gdf.SIG_TOR_MAP.iat[i] = 1
             elif combined_gdf.TORNADOTAG.iat[i] == 'POSSIBLE':
-                simplified_gdf.TORNADO_MAP.iat[i] = 0.5
-                if simplified_gdf.ALL_HAZ_MAP.iat[i] == 0:
-                    simplified_gdf.ALL_HAZ_MAP.iat[i] = 0.5
+                simplified_gdf.TORNADO_MAP.iat[i] = 1
+                simplified_gdf.ALL_HAZ_MAP.iat[i] = 1
                 if (combined_gdf.DAMAGETAG.iat[i] == 'CONSIDERABLE') or (combined_gdf.DAMAGETAG.iat[i] == 'CATASTROPHIC') or (combined_gdf.DAMAGETAG.iat[i] == 'DESTRUCTIVE'):
                     simplified_gdf.SIG_MAP.iat[i] = 1
             if not combined_gdf.WINDTAG.iat[i] == 'None':
@@ -399,7 +399,7 @@ def main():
     starts = ['1730', '1800', '1830', '1900', '1930', '2000', '2030', '2100', '2130', '2200', '2230', '2300', '2330', '0000', '0030', '0100', '0130',
               '0200', '0230', '0300', '0330', '0400', '0430', '0500', '0530', '0600']
     lengths = [60]
-    leads = [30, 60, 90, 120, 150, 180]
+    leads = [30, 60]#, 90, 120, 150, 180]
     
     ####################################### Generate Warnings #######################################
     
