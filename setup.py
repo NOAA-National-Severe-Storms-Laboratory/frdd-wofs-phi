@@ -13,7 +13,7 @@ here = pathlib.Path(__file__).parent.resolve()
 long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 __key__ = 'PACKAGE_VERSION'
-__version__= os.environ[__key__] if __key__ in os.environ else '0.0.3'
+__version__= os.environ[__key__] if __key__ in os.environ else '0.0.4'
 
 setup(
     name='frdd-wofs-phi', 
@@ -32,15 +32,24 @@ setup(
         'Intended Audience :: Scientists',
         'Programming Language :: Python :: 3'
     ],
-    # install_requires = [
-    #     'python>=3.10',
-    # ],
+    install_requires = [
+        'matplotlib>=3.4.3',
+        'wofs',
+        'numpy>=1.22.4',
+        'netcdf4>=1.6.2',
+        'geopandas>=0.13.2',
+        'scikit-image>=0.19.1',
+        'scikit-learn>=1.0.2',
+        'scikit-learn-intelex>=2023.0.1',
+        'xarray>=0.21.1',
+        'pyproj',
+        'shapely',
+        'cartopy>=0.21.1'
+    ],
     package_data={'wofs_phi' : ['*.txt']},
-
     packages=['wofs_phi'],  # Required
-
     python_requires='>=3.10, <4',
-    package_dir={'wofs_ml_severe': 'wofs_ml_severe'},
+    package_dir={'wofs_phi': 'wofs_phi'},
     project_urls={  # Optional
         'Bug Reports': 'https://github.com/NOAA-National-Severe-Storms-Laboratory/frdd-wofs-phi/issues',
         'Source': 'https://github.com/NOAA-National-Severe-Storms-Laboratory/frdd-wofs-phi',
