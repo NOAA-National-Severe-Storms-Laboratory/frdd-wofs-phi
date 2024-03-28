@@ -77,7 +77,8 @@ class MLGenerator:
     ''' This class will handle the ML generator functions. '''
 
 
-    def __init__(self, wofs_files, ps_files, ps_path, wofs_path, torp_files, nc_outdir): 
+    def __init__(self, wofs_files, ps_files, ps_path, wofs_path, torp_files, nc_outdir,\
+                    mode, train_types): 
 
         ''' @wofs_files is the list of wofs_files to use for the prediction (in chronological order,
             beginning with the start of the prediction window/valid period and ending with the end of
@@ -91,7 +92,12 @@ class MLGenerator:
             @wofs_path is the string path to the wofs files   
 
             @nc_outdir is the directory to save the final .ncdf files to 
+        
+            @mode is a string: either "forecast" or "warning" -- tells which mode to run in
             
+            @train_types is a list of strings: 
+                each element is 'obs', 'warnings', or 'obs_and_warnings' -- 
+                tells the types of models to use in the ncdf file 
         '''
 
         self.wofs_files = wofs_files
@@ -100,6 +106,8 @@ class MLGenerator:
         self.wofs_path = wofs_path
         self.nc_outdir = nc_outdir
         self.torp_files = torp_files
+        self.mode = mode
+        self.train_types = train_types
 
 
     def generate(self):
@@ -112,23 +120,6 @@ class MLGenerator:
         #Get the forecast specifications (e.g., start valid, end_valid, ps_lead time, wofs_lead_time, etc.) 
         #These will be determined principally by the wofs files we're dealing with
         forecast_specs = ForecastSpecs.create_forecast_specs(self.ps_files, self.wofs_files, c.all_fields_file, c.all_methods_file, c.single_pt_file)
-
-
-        #Purely for testing: Will remove soon
-        #full_ncdf_outname = "%s/%s/%s" %(c.ncdf_save_dir, c.mode,\
-        #                                        MLGenerator.get_ncdf_outname(forecast_specs))
-
-        #TODO: Probably will update this later; for now, save to same path as netcdf 
-        #png_path = "%s/%s" %(c.ncdf_save_dir, c.mode)
-
-        #try: 
-        #    plot_wofs_phi_forecast_mode(full_ncdf_outname, png_path, \
-        #                    forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
-        #                    forecast_specs.start_valid_dt, forecast_specs.end_valid_dt,\
-        #                    forecast_specs.forecast_window)
-
-        #except FileNotFoundError:
-        #   return 
 
 
         if (c.generate_forecasts == True):
@@ -205,31 +196,33 @@ class MLGenerator:
 
                 #NOTE: All radii and hazards will go into the same ncdf file 
 
-                MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array, wofs.xarr) 
+                MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array, \
+                        wofs.xarr, self.mode, self.train_types) 
+
                 if (c.plot_forecasts == True):
                     
                     #Plot the forecasts to png 
-                    full_ncdf_outname = "%s/%s/%s" %(c.ncdf_save_dir, c.mode,\
+                    full_ncdf_outname = "%s/%s/%s" %(c.ncdf_save_dir, self.mode,\
                                                 MLGenerator.get_ncdf_outname(forecast_specs))
 
                     #TODO: Probably will update this later; for now, save to same path as netcdf 
-                    png_path = "%s/%s" %(c.ncdf_save_dir, c.mode)
+                    png_path = "%s/%s" %(c.ncdf_save_dir, self.mode)
 
-                    if (c.mode == "forecast"):
+                    if (self.mode == "forecast"):
                                 
                         plot_wofs_phi_forecast_mode(full_ncdf_outname, png_path, \
                             forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
                             forecast_specs.start_valid_dt, forecast_specs.end_valid_dt,\
-                            forecast_specs.forecast_window)
+                            forecast_specs.forecast_window, self.train_types)
 
  
                     #TODO: Will tackle this after handling forecast mode 
-                    elif (c.mode == "warning"):
+                    elif (self.mode == "warning"):
                         
                         plot_wofs_phi_warning_mode(full_ncdf_outname, png_path, \
                             forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
                             forecast_specs.start_valid_dt, forecast_specs.end_valid_dt,\
-                            forecast_specs.forecast_window)
+                            forecast_specs.forecast_window, self.train_types)
 
 
 
@@ -344,13 +337,30 @@ class MLGenerator:
 
         return nc_name
 
+    @staticmethod
+    def get_sr_filename(hazard, startmin, length, train_type, radius, modeStr):
+        #@modeStr is either "forecast" or "warning", depending on which mode we're in
+        if (modeStr == "warning"):
+            startmin = 30
+            endmin = 90 
+        else: 
+            endmin = startmin + length
 
+        if train_type == 'warnings':
+            sr_map_fname = '%s_%s-%smin_%s_sr_map.csv' %(train_type, startmin, endmin, hazard)
+        else:
+            sr_map_fname = '%s_%skm_%s-%smin_%s_sr_map.csv' %(train_type, radius, startmin, endmin, hazard)
+        return sr_map_fname
+
+#TODO: 
+#Add self.sr_probs
 class MLPrediction:
     ''' This class handles the ML prediction'''
 
 
     def __init__(self, rf_filename, hazard, time_window, radius_str, radius_float,\
-                     probs, rf_model, predictor_arr, radius_str_ncdf):
+                     probs, probs1d, srs2d, rf_model, predictor_arr, radius_str_ncdf,\
+                     train_type):
         '''@rf_filename is the full name of the pickled model (including the path)
             @hazard is the string hazard name (e.g., "wind", "hail", or "tornado") 
             @time_window is the length of the forecast time window in minutes 
@@ -358,12 +368,19 @@ class MLPrediction:
                 or "warning" if trained on warnings)
             @radius_float is the radius in float form (e.g., 7.5, 15.0, 30.0, etc.; 
                 or 0.0 if trained on warnings)
-            @probs is the 2-d np array of probabilities 
+            @probs is the 2-d np array of probabilities
+            @probs1d is the 1-d np array of probabilities
+            @srs2d is the 2-d np array of SR mapped probabilities
             @rf_model is the unpickled RF model used to make predictions 
             @predictor_arr is the array of predictors (in format 
                 (rows: examples, columns: predictors))
             @radius_str_ncdf is the radius in string format for the variables in the 
                 netcdf files 
+            @train_type is a string indicating how the training was done (i.e., what
+                type of model to use.
+                "obs" for only LSRs, 
+                "warnings" for only warnings,
+                "obs_and_warnings" for LSRs + warnings.
         '''
 
 
@@ -372,59 +389,115 @@ class MLPrediction:
         self.time_window = time_window 
         self.radius_str = radius_str
         self.radius_float = radius_float
-        self.probs = probs 
+        self.probs = probs
+        self.probs1d = probs1d
+        self.srs2d = srs2d
         self.rf_model = rf_model 
         self.predictor_arr = predictor_arr
         self.radius_str_ncdf = radius_str_ncdf
+        self.train_type = train_type 
 
         return 
 
 
     @classmethod
-    def create_rf_predictions(cls, specs, grid_obj, predictor_array, wofs_xarr):
+    def create_rf_predictions(cls, specs, grid_obj, predictor_array, wofs_xarr, \
+                    mode_type, train_types):
         '''Factory method for creating RF predictions.
             @specs is a ForecastSpecs object
             @grid_obj is a Grid object
             @predictor_array is the array of predictors to run through the RF 
                 to make predictions. Format: (rows: examples, columns: predictors)
             @wofs_xarr is the wofs xarray with the metadata added 
+            @mode_type is either "forecast" for forecast mode or "warning" for
+                warning mode 
+            @train_types is an array of strings indicating how training was done: 
+                "obs" for only lsrs, 
+                "warnings" for only warnings,
+                "obs_and_warnings" for both obs and warnings
+                These are the training types that will be included in the final
+                netcdf file 
         '''
 
         zero_probs_2d = np.zeros((grid_obj.ny, grid_obj.nx))
+        zero_srs_2d = zero_probs_2d
+        zero_probs_1d = np.zeros(grid_obj.ny*grid_obj.nx)
         
         #Will hold the set of mlp objects over the different hazards and radii 
         mlp_list = [] 
 
-        for hazard in c.final_hazards:
+        for train_type in train_types: 
+            for hazard in c.final_hazards:
+    
+                for r in range(len(c.obs_radii_str)):
+                    radius_str = c.obs_radii_str[r]
+                    radius_float = c.obs_radii_float[r] 
+                    radius_str_ncdf = c.final_str_obs_radii[r] 
+                    radius_float_str = c.obs_radii[r] 
 
-            for r in range(len(c.obs_radii_str)):
-                radius_str = c.obs_radii_str[r]
-                radius_float = c.obs_radii_float[r] 
-                radius_str_ncdf = c.final_str_obs_radii[r] 
-
-                #Get filename 
-                rf_filename = MLPrediction.get_rf_filename(specs.forecast_window,\
-                                hazard, radius_str) 
+                    #Get filename - TODO: change to use "train_type" variable
+                    rf_filename = MLPrediction.get_rf_filename(specs, \
+                                hazard, radius_float_str, mode_type, train_type) 
 
 
-                rfModel = MLPrediction.load_rf_model(rf_filename) 
-                #Create new MLPrediction object 
-                mlp = MLPrediction(rf_filename, hazard, specs.forecast_window, radius_str, radius_float, \
-                            zero_probs_2d, rfModel, predictor_array, radius_str_ncdf)
+                    rfModel = MLPrediction.load_rf_model(rf_filename) 
+                    #Create new MLPrediction object 
+                    mlp = MLPrediction(rf_filename, hazard, specs.forecast_window, radius_str, radius_float, \
+                            zero_probs_2d, zero_probs_1d, zero_srs_2d, rfModel, predictor_array, \
+                            radius_str_ncdf, train_type)
 
-                #Set the probabilities 
-                mlp.set_probs(grid_obj)
+                    #Set the probabilities 
+                    mlp.set_probs(grid_obj)
 
-                #Append to list 
-                mlp_list.append(mlp) 
+                    #TODO: Set the SR probs (if we're using SR mapping)
+                    mlp.set_sr_probs(specs, train_type, radius_float, mode_type)
+
+                    #Append to list 
+                    mlp_list.append(mlp) 
 
 
         #Once we have a list of mlp objects, save to netcdf file 
-        FinalNCFile.create_final_ncdf_from_mlps(mlp_list, specs, grid_obj, wofs_xarr) 
+        FinalNCFile.create_final_ncdf_from_mlps(mlp_list, specs, grid_obj, wofs_xarr,\
+                        mode_type) 
                 
 
 
         return 
+
+
+    def set_sr_probs(self, specs_obj, train_type, radius, mode_str):
+        #Maps the raw probabilities to success ratios and assigns to class attribute
+        #srs2d
+        #@specs_obj is a forecast specs object
+        #@mode_str is the string corresponding to forecast or warning mode :
+            #"forecast" or "warning"
+    
+        #startmin = int((specs_obj.start_valid_dt - specs_obj.wofs_init_time_dt).seconds/60)
+        startmin = specs_obj.get_minutes_from_wofs_init_to_start_valid()
+        
+        sr_map_fname = MLGenerator.get_sr_filename(self.hazard, startmin, self.time_window, train_type, \
+                            radius, mode_str)
+        sr_map_df = pd.read_csv('%s/%s' %(c.real_time_sr_map_dir, sr_map_fname))
+       
+        probs1d = copy.deepcopy(self.probs1d) 
+        #probs = np.array(self.probs1d)
+        probs = np.array(probs1d) 
+        zero_indices = np.where(probs < 0.01)
+        probs[zero_indices] = 0
+        probs = np.around(probs, 2)
+        srs1d = np.zeros(np.array(probs).size)
+        sr_dict = {}
+        thresholds = sr_map_df.raw_prob.values
+        sr_mappings = sr_map_df.SR.values
+        for i in range(len(thresholds)):
+            t = thresholds[i]
+            sr = sr_mappings[i]
+            sr_dict[str(round(t,2))] = sr
+        for i in range(len(probs)):
+            srs1d[i] = sr_dict[str(probs[i])]
+        self.srs2d = srs1d.reshape(MLTrainer.GRID_SHAPE_X, MLTrainer.GRID_SHAPE_Y)
+        
+        return
 
 
     def set_probs(self, curr_grid):
@@ -437,7 +510,8 @@ class MLPrediction:
                             one_d_probs, curr_grid.ny, curr_grid.nx) 
 
         #Set the probs attribute 
-        self.probs = two_d_probs 
+        self.probs = two_d_probs
+        self.probs1d = one_d_probs
 
         return 
 
@@ -470,15 +544,40 @@ class MLPrediction:
 
     #TODO: Will have to fully implmement this later -- and probably make this an instance method
     @staticmethod
-    def get_rf_filename(window_minutes, haz_name, radius):
+    def get_rf_filename(specs_obj, haz_name, radius, mode_str, train_string):
         '''Gets the full filenames to the rf file. Returns the pkl files 
             in the hazard order as given in the config file
-            @window_minutes is the time window of the valid period in minutes
+            @specs_obj is a ForecastSpecs object for the given situation 
+            @haz_name is the name of the hazard (full); e.g., "tornado"
+            @radius is the radius string corresponding to the pkl filename
+            @mode_str is either "forecast" for forecast mode or "warning" 
+                for warning mode 
+            @train_string tells how the training was done: 
+                "obs" for only trained on LSRs,
+                "warnings" for only warnings,
+                "obs_and_warnings" for LSRs plus warnings 
 
         '''
 
-        pkl_filename = "%s/wofsphi_%s_%smin_%s_mode_r%skm.pkl" \
-                        %(c.rf_dir, haz_name, window_minutes, c.mode, radius)
+        #OLD: 
+        #pkl_filename = "%s/wofsphi_%s_%smin_%s_mode_r%skm_%s.pkl" \
+        #                %(c.rf_dir, haz_name, window_minutes, mode_str, radius,\
+        #                    train_string)
+
+        start_init = specs_obj.get_minutes_from_wofs_init_to_start_valid()
+        end_init = specs_obj.get_minutes_from_wofs_init_to_end_valid() 
+
+        if (mode_str == "warning"):
+
+            pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window30-90_r%skm_fold0.pkl"\
+                        %(c.rf_dir, train_string, haz_name, specs_obj.forecast_window, radius)
+
+        else: 
+
+            pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window%s-%s_r%skm_fold0.pkl"\
+                        %(c.rf_dir, train_string, haz_name, specs_obj.forecast_window, start_init,\
+                        end_init, radius)
+
 
 
         return pkl_filename
@@ -489,28 +588,37 @@ class FinalNCFile:
 
 
 
-    def __init__(self, list_of_mlps, xr_list, outname, xr):
+    def __init__(self, list_of_mlps, xr_list, outname, xr, mode):
         '''@list_of_mlps is a list of MLPrediction objects needed for the current final netcdf file
             @xr_list is a list of xarray datasets that will be used to construct the final netcdf file
             @outname is the name of the ncdf output file 
-            @xr is the combined xarray dataset: i.e., all elements of the xr_list'''
+            @xr is the combined xarray dataset: i.e., all elements of the xr_list
+            @mode is mode type (str): "forecast" for forecast mode, "warning" for warning mode 
+        '''
 
 
         self.list_of_mlps = list_of_mlps
         self.xr_list = xr_list
         self.outname = outname
         self.xr = xr
+        self.mode = mode 
 
         return 
 
 
     @classmethod
-    def create_final_ncdf_from_mlps(cls, mlps_list, fcstSpecs, gridObject, wofsXR):
+    def create_final_ncdf_from_mlps(cls, mlps_list, fcstSpecs, gridObject, wofsXR,\
+            mode_str):
+
         ''' Factory method for creating FinalNCFile object from list of MLPrediction objects.
             @mlps_list is a list of MLPrediction objects.
             @fcstSpecs is a ForecastSpecs object
             @gridObject is a Grid object
-            @wofsXR is a wofs xarray dataset with the metadata added'''
+            @wofsXR is a wofs xarray dataset with the metadata added
+            @mode_str is the string corresponding to what mode we're in: 
+                "forecast" for forecast mode, "warning" for warning mode 
+
+        '''
 
        
         #Find the ncdf outname 
@@ -521,7 +629,7 @@ class FinalNCFile:
                         "x": (range(gridObject.nx))})
 
         #Create an initial FinalNCFile object
-        nc_file_obj = FinalNCFile(mlps_list, [], nc_outname, initial_xr) 
+        nc_file_obj = FinalNCFile(mlps_list, [], nc_outname, initial_xr, mode_str) 
 
         #Set the xr_list 
         nc_file_obj.set_xr_list(gridObject) 
@@ -555,7 +663,10 @@ class FinalNCFile:
     def set_xr_list(self, grid_obj):
         '''Sets the xr_list attribute
             @grid_obj is a Grid object
-            @wofs_xarray is an xarray dataset with the wofs metadata added'''
+            @wofs_xarray is an xarray dataset with the wofs metadata added
+            @trainType is the train_type string: "obs", "warnings", or
+                "obs_and_warnings"
+        '''
 
         xrList = []         
 
@@ -568,14 +679,17 @@ class FinalNCFile:
             new_xr = xr.Dataset(data_vars=None, coords={"y": (range(grid_obj.ny)), \
                         "x": (range(grid_obj.nx))})
 
-            new_xr[var_name] = (["y", "x"], mlp_obj.probs)
+            #NOTE: This is what we'd use if we just use the raw probs
+            #new_xr[var_name] = (["y", "x"], mlp_obj.probs)
+
+            #This is what we use if we want to use the SR-mapped probs
+            new_xr[var_name] = (["y", "x"], mlp_obj.srs2d)
 
             #Append to list 
             xrList.append(new_xr) 
 
         #Set the instance attribute 
         self.xr_list = xrList
-
 
         return 
 
@@ -602,7 +716,7 @@ class FinalNCFile:
     def save_ncdf(self):
 
         #from wofs.post.utils import save_dataset #save_dataset(filename, xarray_data)
-        full_outname = "%s/%s/%s" %(c.ncdf_save_dir, c.mode, self.outname) 
+        full_outname = "%s/%s/%s" %(c.ncdf_save_dir, self.mode, self.outname) 
 
         save_dataset(full_outname, self.xr) 
 
@@ -613,10 +727,13 @@ class FinalNCFile:
     @staticmethod
     def get_nc_var_name(mlp_object):
         '''Returns the variable name (in the xarray and eventually the ncdf file
-            based on a given MLPrediction object.'''
+            based on a given MLPrediction object.
+            @mlp_object is the MLPrediction object, 
+        '''
 
-        varName = "wofsphi__%s__%skm__%smin" %(mlp_object.hazard, \
-            mlp_object.radius_str_ncdf, mlp_object.time_window)
+        varName = "wofsphi__%s__%skm__%smin__%s" %(mlp_object.hazard, \
+            mlp_object.radius_str_ncdf, mlp_object.time_window, \
+            mlp_object.train_type)
 
 
         return varName
@@ -1044,14 +1161,15 @@ class MLTrainer:
     GRID_SHAPE_X = 300 #shape to save model probs to x coord
     GRID_SHAPE_Y = 300 #shape to save model probs to y coord
     
-    def __init__(self, dates, forecast_length, wofs_lead_time, num_folds, haz, wofs_spinup_time, n_jobs = 36, n_trees = 200, criterion = 'entropy',
-                 max_depth = 15, min_samples_leaf = 20, max_features = "sqrt"):
+    def __init__(self, dates, forecast_length, wofs_lead_time, num_folds, haz, wofs_spinup_time, radius, n_jobs = 36, n_trees = 200, criterion =
+                 'entropy', max_depth = 15, min_samples_leaf = 20, max_features = "sqrt"):
         self.dates = dates #this needs to be in a list of date strings (YYYYMMDD)
         self.forecast_length = forecast_length
         self.lead_time = wofs_lead_time
         self.num_folds = num_folds
         self.hazard = haz
         self.wofs_spinup_time = wofs_spinup_time
+        self.radius = radius
         
         #RF variables/hyperparameters as optional inputs:
         self.n_jobs = n_jobs
@@ -1061,9 +1179,10 @@ class MLTrainer:
         self.min_samples_leaf = min_samples_leaf
         self.max_features = max_features
     
-    def do_training_observations(self):
+    def do_training(self):
         '''Will do the training, run on validation and map probs to success ratios, then run on testing data with the mapped SRs'''
         
+        warnings.filterwarnings('ignore')
         self.inits = c.top_hour_inits
         self.inits.extend(c.bottom_hour_inits)
         self.set_chunk_splits()
@@ -1074,14 +1193,19 @@ class MLTrainer:
         #self.n_vars = len(self.wofs_vars) + len(self.ps_vars)
         val_ind = self.num_folds - 2
         test_ind = self.num_folds - 1
-        for r in ['30.0']:#c.obs_radii:
-            for k in range(self.num_folds):
-                print('fold: ', k+1)
-                self.save_model(k, r)
-                self.run_on_validation(k, r)
-                self.save_test_predictions(k, r, plotting = True)
+        for k in range(self.num_folds):
+            print('fold: ', k+1)
+            if c.train_mode == 'train':
+                self.save_model(k)
+                print('model saved: fold ', k+1)
+            if (c.train_mode == 'train') or (c.train_mode == 'validate'):
+                self.run_on_validation(k)
+                print('validation done: fold ', k+1)
+            if (c.train_mode == 'train') or (c.train_mode == 'validate') or (c.train_mode == 'test'):
+                self.save_test_predictions(k, plotting = True)
+                print('testing done: fold ', k+1, ' complete')
     
-    def save_model(self, fold, r):
+    def save_model(self, fold):
         '''Trains and saves a single model (one hazard, forecast window, fold, radius)'''
         
         fold_train_dates = self.date_train_folds[fold]
@@ -1096,25 +1220,29 @@ class MLTrainer:
                     real_init_dt = init_dt
                 spinup_dt = real_init_dt + dt.timedelta(seconds = (self.wofs_spinup_time*60))
                 start_dt = real_init_dt + dt.timedelta(seconds = (self.lead_time*60))
-                end_dt = start_dt + dt.timedelta(seconds = forecast_length*60)
+                end_dt = start_dt + dt.timedelta(seconds = self.forecast_length*60)
                 arr = self.get_predictors_fname(init_dt, spinup_dt, start_dt, end_dt)
                 if arr[0] == '':
                     continue
-                #get predictors returns array length 1 if there are no filenames, returns length 2 if there are (length 2 being the fcst_specs)
+                #get predictors returns array length 1 if there are no filenames, returns length 2 if there are (length 2 being the
+                #fcst_specs)
                 predictor_fname = arr[0]
                 fcst_specs = arr[1]
                 try:
-                    obs_fname = self.get_events_fname(init_dt, start_dt, end_dt, r, fcst_specs)
+                    obs_fname = self.get_events_fname(init_dt, start_dt, end_dt, fcst_specs)
                 except:
                     #no obs
                     continue
                 #these two filenames dont really matter as they get deleted right away
-                os.system('cat %s >> ./training_fdata_%s_%smin_r%skm.dat' %(predictor_fname, self.hazard, self.forecast_length, str(r)))
-                os.system('cat %s >> ./training_odata_%s_%smin_r%skm.dat' %(obs_fname, self.hazard, self.forecast_length, str(r)))
+                os.system('cat %s >> ./%s_trained_training_fdata_%s_%smin_r%skm.dat' %(predictor_fname, c.train_type, self.hazard,
+                                                                                       self.forecast_length, self.radius))
+                os.system('cat %s >> ./%s_trained_training_odata_%s_%smin_r%skm.dat' %(obs_fname, c.train_type, self.hazard,
+                                                                                       self.forecast_length, self.radius))
         
         #these two filenames dont really matter as they get deleted right away
-        forecast_file = './training_fdata_%s_%smin_r%skm.dat' %(self.hazard, self.forecast_length, str(r))
-        obs_file = './training_odata_%s_%smin_r%skm.dat' %(self.hazard, self.forecast_length, str(r))
+        forecast_file = './%s_trained_training_fdata_%s_%smin_r%skm.dat' %(c.train_type, self.hazard, self.forecast_length,
+                                                                           self.radius)
+        obs_file = './%s_trained_training_odata_%s_%smin_r%skm.dat' %(c.train_type, self.hazard, self.forecast_length, self.radius)
 
         training_x = self.read_binary(forecast_file)
         training_y = self.read_obs_binary(obs_file)
@@ -1122,21 +1250,18 @@ class MLTrainer:
         os.system('rm %s' %(forecast_file))
         os.system('rm %s' %(obs_file))
         
-        clf = RandomForestClassifier(n_jobs = self.n_jobs, n_estimators = self.n_trees, criterion = self.criterion, max_depth = self.max_depth,
-                                     min_samples_leaf = self.min_samples_leaf, max_features = self.max_features)
+        clf = RandomForestClassifier(n_jobs = self.n_jobs, n_estimators = self.n_trees, criterion = self.criterion, max_depth =
+                                     self.max_depth, min_samples_leaf = self.min_samples_leaf, max_features = self.max_features)
         clf.fit(training_x, training_y)
         
-        clf_save_dir = '%s/%s/wofslag_%s/length_%s' %(c.model_save_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
-        clf_filename = 'wofsphi_%s_%smin_window%s-%s_r%skm_fold%s.pkl' %(self.hazard, self.forecast_length, self.lead_time, self.lead_time + self.forecast_length, r, fold)
-        MLTrainer.save_data(clf_save_dir, clf_filename, clf, 'pkl')
+        clf_save_dir, clf_filename = self.get_model_fname_dir(fold)
+        utilities.save_data(clf_save_dir, clf_filename, clf, 'pkl')
     
-    def run_on_validation(self, fold, r):
+    def run_on_validation(self, fold):
         fold_val_dates = self.date_val_folds[fold]
-        save_dir = '%s/%s/wofslag_%s/length_%s' %(c.validation_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
-        all_probs_save_dir = '%s/all_raw_probs_fold%s' %(save_dir, fold)
         
-        clf_save_dir = '%s/%s/wofslag_%s/length_%s' %(c.model_save_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
-        clf_filename = 'wofsphi_%s_%smin_window%s-%s_r%skm_fold%s.pkl' %(self.hazard, self.forecast_length, self.lead_time, self.lead_time + self.forecast_length, r, fold)
+        all_probs_save_dir, all_probs_fname, all_events_fname = self.get_all_val_probs_events_fname_dir(fold)
+        clf_save_dir, clf_filename = self.get_model_fname_dir(fold)
         
         start_min = self.lead_time
         end_min = self.lead_time + self.forecast_length
@@ -1150,7 +1275,7 @@ class MLTrainer:
                     real_init_dt = init_dt + timedelta(days=1)
                 else:
                     real_init_dt = init_dt
-                probs_1d, obs = self.get_probs(model, r, date, real_init_dt, save_dir, do_saving = True)
+                probs_1d, obs = self.get_probs(model, date, real_init_dt, do_saving = True)
                 if probs_1d == [] or obs == []:
                     continue
                 all_probs.extend(probs_1d)
@@ -1158,25 +1283,26 @@ class MLTrainer:
         
         all_probs = np.array(all_probs)
         all_events = np.array(all_events)
-        all_probs_fname = 'all_rf_%s_raw_probs_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_probs_save_dir, all_probs_fname, all_probs, 'npy')
-        all_events_fname = 'all_%s_events_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_probs_save_dir, all_events_fname, all_events, 'npy')
+        utilities.save_data(all_probs_save_dir, all_probs_fname, all_probs, 'npy')
+        utilities.save_data(all_probs_save_dir, all_events_fname, all_events, 'npy')
         
         thresholds = np.round(np.arange(0,1.01,0.01), 2)
-        srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
+        if self.hazard == 'tornado':
+            srs = MLTrainer.get_srs(all_probs, all_events, thresholds, include_less_10 = True)
+        else:
+            srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
         df = pd.DataFrame({'raw_prob': thresholds, 'SR': srs})
-        sr_map_fname = 'sr_map_%s_spinup%smin_length%smin_%s-%s_r%skm_fold%s.csv' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_probs_save_dir, sr_map_fname, df, 'csv')
+        sr_map_dir, sr_map_fname = self.get_sr_map_fname_dir(fold)
+        utilities.save_data(sr_map_dir, sr_map_fname, df, 'csv')
     
-    def get_probs(self, model, r, date, real_init_dt, save_dir, do_saving = False):
+    def get_probs(self, model, date, real_init_dt, do_saving = False):
         if real_init_dt.hour < c.wofs_reset_hour:
             init_dt = real_init_dt - timedelta(days=1)
         else:
             init_dt = real_init_dt
         spinup_dt = real_init_dt + dt.timedelta(seconds = (self.wofs_spinup_time*60))
         start_dt = real_init_dt + dt.timedelta(seconds = (self.lead_time*60))
-        end_dt = start_dt + dt.timedelta(seconds = forecast_length*60)
+        end_dt = start_dt + dt.timedelta(seconds = self.forecast_length*60)
         arr = self.get_predictors_fname(init_dt, spinup_dt, start_dt, end_dt, full_npy = True)
         if arr[0] == '':
             return [], []
@@ -1192,32 +1318,31 @@ class MLTrainer:
             init_time_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[1]
             start_time_str = start_dt.strftime('%Y%m%d-%H%M').split('-')[1]
             end_time_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
-            save_file = 'rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.txt' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
-            MLTrainer.save_data(save_dir + '/' + init_date_str, save_file, probs_2d, 'txt')
+            save_dir, save_file = self.get_val_probs_fnames_dir(init_date_str, init_time_str, start_time_str, end_time_str)
+            utilities.save_data(save_dir, save_file, probs_2d, 'txt')
         
         try:
-            obs_fname = self.get_events_fname(init_dt, start_dt, end_dt, r, fcst_specs, full_npy = True)
-            obs = list(np.load(obs_fname))
+            obs_fname = self.get_events_fname(init_dt, start_dt, end_dt, fcst_specs, full_npy = True)
+            obs = np.load(obs_fname)
+            events_len = len(obs)
+            events = list(np.reshape(obs, (events_len,)))
         except:
             #no obs file
-            obs = []
+            events = []
+            print('no obs file')
         
-        return list(clf_probs), obs
+        return list(clf_probs), events
     
-    def save_test_predictions(self, fold, r, plotting = False):
+    def save_test_predictions(self, fold, plotting = False):
         fold_test_dates = self.date_test_folds[fold]
-        save_dir = '%s/%s/wofslag_%s/length_%s' %(c.test_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
-        all_srs_save_dir = '%s/fold%s' %(save_dir, fold)
-        sr_map_dir = '%s/%s/wofslag_%s/length_%s/all_raw_probs_fold%s' %(c.validation_dir, self.hazard, self.wofs_spinup_time, self.forecast_length, fold)
-        
-        clf_save_dir = '%s/%s/wofslag_%s/length_%s' %(c.model_save_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
-        clf_filename = 'wofsphi_%s_%smin_window%s-%s_r%skm_fold%s.pkl' %(self.hazard, self.forecast_length, self.lead_time, self.lead_time + self.forecast_length, r, fold)
+        clf_save_dir, clf_filename = self.get_model_fname_dir(fold)
         start_min = self.lead_time
         end_min = self.lead_time + self.forecast_length
-        sr_map_fname = 'sr_map_%s_spinup%smin_length%smin_%s-%s_r%skm_fold%s.csv' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
+        sr_map_dir, sr_map_fname = self.get_sr_map_fname_dir(fold)
         sr_map_df = pd.read_csv('%s/%s' %(sr_map_dir, sr_map_fname))
         all_srs = []
         all_events = []
+        all_probs = []
         model = pickle.load(open('%s/%s' %(clf_save_dir, clf_filename), 'rb'))
         
         for date in fold_test_dates:
@@ -1229,9 +1354,9 @@ class MLTrainer:
                 else:
                     real_init_dt = init_dt
                 start_dt = real_init_dt + dt.timedelta(seconds = (self.lead_time*60))
-                end_dt = start_dt + dt.timedelta(seconds = forecast_length*60)
+                end_dt = start_dt + dt.timedelta(seconds = self.forecast_length*60)
                 
-                probs_1d, obs = self.get_probs(model, r, date, real_init_dt, save_dir)
+                probs_1d, obs = self.get_probs(model, date, real_init_dt)
                 if probs_1d == []:
                     #only test if we got the probs, dont care about getting the obs here it just returns them with the function
                     continue
@@ -1244,38 +1369,42 @@ class MLTrainer:
                 end_time_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
                 
                 if c.plot_in_training:
-                    plot_file_sr = 'rf_%s_sr_probs_%s_init%s_v%s-%s_r%skm.png' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
-                    plot_file_raw = 'rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.png' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
-                    title_sr = 'Mapped SRs %s init %s valid %s-%s' %(init_date_str, init_time_str, start_time_str, end_time_str)
-                    title_raw = 'Raw Probs %s init %s valid %s-%s' %(init_date_str, init_time_str, start_time_str, end_time_str)
+                    plot_save_dir, plot_file_sr, plot_file_raw = self.get_plot_fnames_dir(init_date_str, init_time_str, start_time_str,
+                                                                                          end_time_str)
+                    title_sr, title_raw = self.get_plot_titles(init_date_str, init_time_str, start_time_str, end_time_str)
+                    
                     if self.hazard == 'hail':
                         obs_color = ('b')
                     if self.hazard == 'wind':
-                        obs_color = ('c')
-                    if self.hazard == 'torn':
+                        obs_color = ('m')
+                    if self.hazard == 'tornado':
                         obs_color = ('r')
                     if obs == []:
                         obs = np.zeros(MLTrainer.GRID_SHAPE_X*MLTrainer.GRID_SHAPE_Y)
-                    obs = np.array(obs).reshape(MLTrainer.GRID_SHAPE_X,MLTrainer.GRID_SHAPE_Y)
-                    MLTrainer.plot_probs(srs2d, obs, obs_color, init_date_str, title_sr, save_dir + '/' + init_date_str, plot_file_sr)
-                    MLTrainer.plot_probs(probs_2d, obs, obs_color, init_date_str, title_raw, save_dir + '/' + init_date_str, plot_file_raw)
+                    plot_obs = np.array(obs).reshape(MLTrainer.GRID_SHAPE_X,MLTrainer.GRID_SHAPE_Y)
+                    if self.hazard == 'tornado':
+                        levels = np.arange(0.05, 0.55, 0.05)
+                    else:
+                        levels = np.arange(0.1, 1.1, 0.1)
+                    MLTrainer.plot_probs(srs2d, plot_obs, obs_color, levels, init_date_str, title_sr, plot_save_dir, plot_file_sr)
+                    MLTrainer.plot_probs(probs_2d, plot_obs, obs_color, levels, init_date_str, title_raw, plot_save_dir, plot_file_raw)
                 
-                save_file_sr = 'rf_%s_sr_probs_%s_init%s_v%s-%s_r%skm.txt' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
-                MLTrainer.save_data(save_dir + '/' + init_date_str, save_file_sr, srs2d, 'txt')
-                
-                save_file_raw = 'rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.txt' %(self.hazard, init_date_str, init_time_str, start_time_str, end_time_str, r)
-                MLTrainer.save_data(save_dir + '/' + init_date_str, save_file_raw, probs_2d, 'txt')
+                save_dir, save_file_sr, save_file_raw = self.get_test_probs_fnames_dir(fold, init_date_str, init_time_str, start_time_str,
+                                                                                       end_time_str)
+                utilities.save_data(save_dir, save_file_sr, srs2d, 'txt')
+                utilities.save_data(save_dir, save_file_raw, probs_2d, 'txt')
                 
                 
                 all_srs.extend(srs1d)
                 all_events.extend(obs)
+                all_probs.extend(probs_1d)
         
         all_srs = np.array(all_srs)
         all_events = np.array(all_events)
-        all_srs_fname = 'all_rf_%s_sr_probs_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_srs_save_dir, all_srs_fname, all_srs, 'npy')
-        all_events_fname = 'all_%s_events_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(self.hazard, self.wofs_spinup_time, self.forecast_length, start_min, end_min, r, fold)
-        MLTrainer.save_data(all_srs_save_dir, all_events_fname, all_events, 'npy')
+        all_srs_save_dir, all_srs_fname, all_probs_fname, all_events_fname = self.get_all_test_sr_events_fname_dir(fold)
+        utilities.save_data(all_srs_save_dir, all_srs_fname, all_srs, 'npy')
+        utilities.save_data(all_srs_save_dir, all_probs_fname, all_probs, 'npy')
+        utilities.save_data(all_srs_save_dir, all_events_fname, all_events, 'npy')
     
     def get_predictors_fname(self, init_dt, spinup_dt, start_dt, end_dt, full_npy = False):
         '''gets the full filename (including directory) of where the predictors *should* be so that we can see if they still need to be generated'''
@@ -1292,41 +1421,79 @@ class MLTrainer:
         else:
             pred_filename = c.train_fcst_full_npy_dir + '/' + MLGenerator.get_full_npy_filename(fcst_specs)
         if not os.path.isfile(pred_filename):
+            return ['']
             #predictor files don't exist, we need to generate them
-            torp_files = [] #needed for generator, but not training on this... yet
-            nc_outdir = '.' #doesn't matter since we're just using the generator to make/save predictor files
-            generator = MLGenerator(wofs_files, ps_files, c.ps_dir, wofs_dir, torp_files, nc_outdir)
-            try:
-                warnings.filterwarnings('ignore')
-                generator.generate()
-                warnings.filterwarnings('default')
-            except:
-                generator.generate()
+            #torp_files = [] #needed for generator, but not training on this... yet
+            #nc_outdir = '.' #doesn't matter since we're just using the generator to make/save predictor files
+            #generator = MLGenerator(wofs_files, ps_files, c.ps_dir, wofs_dir, torp_files, nc_outdir)
+            #try:
+            #    warnings.filterwarnings('ignore')
+            #    generator.generate()
+            #    warnings.filterwarnings('default')
+            #except:
+            #    generator.generate()
         
         return [pred_filename, fcst_specs]
     
-    def get_events_fname(self, init_dt, start_dt, end_dt, r, fcst_specs, full_npy = False):
+    def get_events_fname(self, init_dt, start_dt, end_dt, fcst_specs, full_npy = False):
         '''gets the full obs files then randomly samples them and saves them to a dat file, returns the dat filename'''
         
-        day_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[0]
-        init_str = init_dt.strftime('%Y%m%d-%H%M').split('-')[1]
-        start_str = start_dt.strftime('%Y%m%d-%H%M').split('-')[1]
-        end_str = end_dt.strftime('%Y%m%d-%H%M').split('-')[1]
+        day_str = init_dt.strftime('%Y%m%d')
+        init_str = init_dt.strftime('%H%M')
+        start_str = start_dt.strftime('%H%M')
+        end_str = end_dt.strftime('%H%M')
+        if self.wofs_spinup_time % 2 == 1:
+            wofs_spinup = self.wofs_spinup_time - 1
+        else:
+            wofs_spinup = self.wofs_spinup_time
+        ps_time = init_dt + dt.timedelta(seconds = wofs_spinup*60)
+        ps_time_str = ps_time.strftime('%H%M')
+        
+        sample_indices_fname = MLGenerator.get_rand_inds_filename(fcst_specs)
+        sample_indices_full_fname = '%s/%s' %(c.train_fcst_dat_dir, sample_indices_fname)
+        sample_indices = np.load(sample_indices_full_fname)
         
         if c.train_type == 'obs':
-            full_npy_fname = '%s/%s_reps1d_%s_v%s-%s_r%skm.npy' %(c.train_obs_full_npy_dir, self.hazard, day_str, start_str, end_str, str(r))
+
+            full_npy_fname = '%s/%s_reps1d_%s_v%s-%s_r%skm.npy' %(c.train_obs_full_npy_dir, self.hazard, day_str, start_str, end_str,
+                                                                  self.radius)
             if full_npy == True:
                 return full_npy_fname
-            obs_full_npy = np.load(full_npy_fname)
-            sample_indices_fname = MLGenerator.get_rand_inds_filename(fcst_specs)
-            sample_indices_full_fname = '%s/%s' %(c.train_fcst_dat_dir, sample_indices_fname)
-            sample_indices = np.load(sample_indices_full_fname)
-            sampled_obs = obs_full_npy[sample_indices]
-
-            sampled_obs_dat_fname = '%s/%s_reps1d_%s_%s_v%s-%s_r%skm.dat' %(c.train_obs_dat_dir, self.hazard, day_str, init_str, start_str, end_str, str(r))
-            sampled_obs.tofile(sampled_obs_dat_fname)
+            
+            sampled_obs_fname = '%s/%s_reps1d_%s_%s_%s_v%s-%s_r%skm.dat' %(c.train_obs_dat_dir, self.hazard, day_str, init_str,
+                                                                           ps_time_str, start_str, end_str, self.radius)
+            return sampled_obs_fname
+            
+        elif c.train_type == 'warnings':
+            full_npy_fname = '%s/length_%s/%s/%s_warnings_%s_v%s-%s_1d.npy' %(c.train_warnings_full_1d_npy_dir, self.forecast_length,
+                                                                    self.hazard, self.hazard, day_str, start_str, end_str)
+            if full_npy == True:
+                return full_npy_fname
+            
+            sampled_warnings_dir = '%s/length_%s/wofs_lead_%s/%s' %(c.train_warnings_sampled_1d_dat_dir, self.forecast_length,
+                                                                    self.lead_time, self.hazard)
+            sampled_warnings_fname = 'sampled_%s_warnings_%s_%s_%s_v%s-%s.dat' %(self.hazard, day_str, init_str, ps_time_str,
+                                                                                 start_str, end_str)
+            full_sampled_warnings_fname = '%s/%s' %(sampled_warnings_dir, sampled_warnings_fname)
+            
+            return full_sampled_warnings_fname
         
-        return sampled_obs_dat_fname
+        elif c.train_type == 'obs_and_warnings':
+            full_npy_fname = '%s/length_%s/%s/%s_obs_and_warnings_%s_v%s-%s_r%skm_1d.npy' %(c.train_obs_and_warnings_full_1d_npy_dir,
+                                                                                     self.forecast_length, self.hazard, self.hazard,
+                                                                                     day_str, start_str, end_str, self.radius)
+            if full_npy == True:
+                return full_npy_fname
+            
+            sampled_events_dir = '%s/length_%s/wofs_lead_%s/%s' %(c.train_obs_and_warnings_sampled_dat_dir, self.forecast_length,
+                                                                  self.lead_time, self.hazard)
+            sampled_events_fname = 'sampled_%s_obs_and_warnings_%s_%s_%s_v%s-%s_r%skm.dat' %(self.hazard, day_str, init_str,
+                                                                                             ps_time_str, start_str, end_str,
+                                                                                             self.radius)
+            
+            full_sampled_events_fname = '%s/%s' %(sampled_events_dir, sampled_events_fname)
+            
+            return full_sampled_events_fname
         
     
     def set_chunk_splits(self):
@@ -1464,8 +1631,144 @@ class MLTrainer:
 
         return arr
     
+    def get_model_fname_dir(self, fold):
+        if c.train_type == 'warnings':
+            save_dir = '%s/%s/wofslag_%s/length_%s' %(c.model_save_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
+            save_file = '%s_trained_wofsphi_%s_%smin_window%s-%s_fold%s.pkl' %(c.train_type, self.hazard, self.forecast_length, self.lead_time,
+                                                              self.lead_time + self.forecast_length, fold)
+        else:
+            save_dir = '%s/%s/wofslag_%s/length_%s' %(c.model_save_dir, self.hazard, self.wofs_spinup_time, self.forecast_length)
+            save_file = '%s_trained_wofsphi_%s_%smin_window%s-%s_r%skm_fold%s.pkl' %(c.train_type, self.hazard, self.forecast_length, self.lead_time,
+                                                              self.lead_time + self.forecast_length, self.radius, fold)
+        
+        return save_dir, save_file
+    
+    def get_all_val_probs_events_fname_dir(self, fold):
+        start_min = self.lead_time
+        end_min = self.lead_time + self.forecast_length
+        all_probs_save_dir = '%s/%s/wofslag_%s/length_%s/all_raw_probs_fold%s' %(c.validation_dir, self.hazard, self.wofs_spinup_time,
+                                                                                 self.forecast_length, fold)
+        if c.train_type == 'warnings':
+            all_probs_fname = '%s_trained_all_rf_%s_raw_probs_spinup%smin_length%s_min%s-%s_fold%s.npy' %(c.train_type, self.hazard,
+                                                                                                          self.wofs_spinup_time, self.forecast_length,
+                                                                                                          start_min,  end_min, fold)
+            all_events_fname = '%s_trained_all_%s_events_spinup%smin_length%s_min%s-%s_fold%s.npy' %(c.train_type, self.hazard,
+                                                                                                     self.wofs_spinup_time,self.forecast_length,
+                                                                                                     start_min, end_min, fold)
+        else:
+            all_probs_fname = '%s_trained_all_rf_%s_raw_probs_spinup%smin_length%s_min%s-%s_r%skm_fold%s.npy' %(c.train_type, self.hazard,
+                                                                                                                self.wofs_spinup_time,
+                                                                                                                self.forecast_length, start_min,
+                                                                                                                end_min, self.radius, fold)
+            all_events_fname = '%s_trained_all_%s_events_spinup%smin_length%s_min%s-%s_r%skm_fold%s.npy' %(c.train_type, self.hazard,
+                                                                                                           self.wofs_spinup_time, self.forecast_length,
+                                                                                                           start_min, end_min, self.radius, fold)
+        return all_probs_save_dir, all_probs_fname, all_events_fname
+    
+    def get_val_probs_fnames_dir(self, init_date_str, init_time_str, start_time_str, end_time_str):
+        save_dir = '%s/%s/wofslag_%s/length_%s/%s/%s' %(c.validation_dir, self.hazard, self.wofs_spinup_time, self.forecast_length, init_date_str,
+                                                        init_time_str)
+        if c.train_type == 'warnings':
+            save_file = '%s_trained_rf_%s_raw_probs_%s_init%s_v%s-%s.txt' %(c.train_type, self.hazard, init_date_str, init_time_str,
+                                                                                  start_time_str, end_time_str)
+        else:
+            save_file = '%s_trained_rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.txt' %(c.train_type, self.hazard, init_date_str, init_time_str,
+                                                                                  start_time_str, end_time_str, self.radius)
+        
+        return save_dir, save_file
+    
+    def get_all_test_sr_events_fname_dir(self, fold):
+        start_min = self.lead_time
+        end_min = self.lead_time + self.forecast_length
+        save_dir = '%s/%s/wofslag_%s/length_%s/fold%s' %(c.test_dir, self.hazard, self.wofs_spinup_time, self.forecast_length, fold)
+        if c.train_type == 'warnings':
+            all_srs_fname = '%s_trained_all_rf_%s_sr_probs_spinup%smin_length%smin_%s-%s_fold%s.npy' %(c.train_type, self.hazard,
+                                                                                                       self.wofs_spinup_time, self.forecast_length,
+                                                                                                       start_min, end_min, fold)
+            all_probs_fname = '%s_trained_all_rf_%s_raw_probs_spinup%smin_length%smin_%s-%s_fold%s.npy' %(c.train_type, self.hazard,
+                                                                                                       self.wofs_spinup_time, self.forecast_length,
+                                                                                                       start_min, end_min, fold)
+            all_events_fname = '%s_trained_all_%s_events_spinup%smin_length%smin_%s-%s_fold%s.npy' %(c.train_type, self.hazard, self.wofs_spinup_time,
+                                                                                                     self.forecast_length, start_min, end_min, fold)
+        else:
+            all_srs_fname = '%s_trained_all_rf_%s_sr_probs_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(c.train_type, self.hazard,
+                                                                                                             self.wofs_spinup_time,
+                                                                                                             self.forecast_length, start_min, end_min,
+                                                                                                             self.radius, fold)
+            all_probs_fname = '%s_trained_all_rf_%s_raw_probs_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(c.train_type, self.hazard,
+                                                                                                       self.wofs_spinup_time, self.forecast_length,
+                                                                                                       start_min, end_min, self.radius, fold)
+            all_events_fname = '%s_trained_all_%s_events_spinup%smin_length%smin_%s-%s_r%skm_fold%s.npy' %(c.train_type, self.hazard,
+                                                                                                           self.wofs_spinup_time, self.forecast_length,
+                                                                                                           start_min, end_min, self.radius, fold)
+        
+        return save_dir, all_srs_fname, all_probs_fname, all_events_fname
+    
+    def get_test_probs_fnames_dir(self, fold, init_date_str, init_time_str, start_time_str, end_time_str):
+        save_dir = '%s/%s/wofslag_%s/length_%s/%s/%s' %(c.test_dir, self.hazard, self.wofs_spinup_time, self.forecast_length, init_date_str,
+                                                        init_time_str)
+        if c.train_type == 'warnings':
+            save_file_sr = '%s_trained_rf_%s_sr_probs_%s_init%s_v%s-%s.txt' %(c.train_type, self.hazard, init_date_str, init_time_str, start_time_str,
+                                                                              end_time_str)
+            save_file_raw = '%s_trained_rf_%s_raw_probs_%s_init%s_v%s-%s.txt' %(c.train_type, self.hazard, init_date_str, init_time_str,
+                                                                                start_time_str, end_time_str)
+        else:
+            save_file_sr = '%s_trained_rf_%s_sr_probs_%s_init%s_v%s-%s_r%skm.txt' %(c.train_type, self.hazard, init_date_str, init_time_str,
+                                                                                    start_time_str, end_time_str, self.radius)
+            save_file_raw = '%s_trained_rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.txt' %(c.train_type, self.hazard, init_date_str, init_time_str,
+                                                                                      start_time_str, end_time_str, self.radius)
+        
+        return save_dir, save_file_sr, save_file_raw
+    
+    def get_plot_fnames_dir(self, init_date_str, init_time_str, start_time_str, end_time_str):
+        save_dir = '%s/%s/wofslag_%s/length_%s/%s/%s' %(c.test_dir, self.hazard, self.wofs_spinup_time, self.forecast_length, init_date_str,
+                                                        init_time_str)
+        if c.train_type == 'warnings':
+            plot_file_sr = '%s_trained_rf_%s_sr_probs_%s_init%s_v%s-%s.png' %(c.train_type, self.hazard, init_date_str, init_time_str, start_time_str,
+                                                                              end_time_str)
+            plot_file_raw = '%s_trained_rf_%s_raw_probs_%s_init%s_v%s-%s.png' %(c.train_type, self.hazard, init_date_str, init_time_str,
+                                                                                start_time_str, end_time_str)
+        else:
+            plot_file_sr = '%s_trained_rf_%s_sr_probs_%s_init%s_v%s-%s_r%skm.png' %(c.train_type, self.hazard, init_date_str, init_time_str,
+                                                                                    start_time_str, end_time_str, self.radius)
+            plot_file_raw = '%s_trained_rf_%s_raw_probs_%s_init%s_v%s-%s_r%skm.png' %(c.train_type, self.hazard, init_date_str, init_time_str,
+                                                                                      start_time_str, end_time_str, self.radius)
+        return save_dir, plot_file_sr, plot_file_raw
+    
+    def get_plot_titles(self, init_date_str, init_time_str, start_time_str, end_time_str):
+        if c.train_type == 'warnings':
+            title_sr = '%s Trained %s Mapped SRs %s init %s\nvalid %s-%s' %(c.train_type.capitalize(), self.hazard.capitalize(),
+                                                                                        init_date_str, init_time_str, start_time_str, end_time_str)
+            title_raw = '%s Trained %s Raw Probs %s init %s\nvalid %s-%s' %(c.train_type.capitalize(), self.hazard.capitalize(),
+                                                                                        init_date_str, init_time_str, start_time_str, end_time_str)
+        else:
+            title_sr = '%s Trained %s Mapped SRs %s init %s\nvalid %s-%s %skm Radius' %(c.train_type.capitalize(), self.hazard.capitalize(),
+                                                                                        init_date_str, init_time_str, start_time_str, end_time_str,
+                                                                                        self.radius)
+            title_raw = '%s Trained %s Raw Probs %s init %s\nvalid %s-%s %skm Radius' %(c.train_type.capitalize(), self.hazard.capitalize(),
+                                                                                        init_date_str, init_time_str, start_time_str, end_time_str,
+                                                                                        self.radius)
+        
+        return title_sr, title_raw
+        
+    
+    def get_sr_map_fname_dir(self, fold):
+        start_min = self.lead_time
+        end_min = self.lead_time + self.forecast_length
+        sr_map_dir = '%s/%s/wofslag_%s/length_%s/all_raw_probs_fold%s' %(c.validation_dir, self.hazard, self.wofs_spinup_time,
+                                                                                 self.forecast_length, fold)
+        if c.train_type == 'warnings':
+            sr_map_fname = '%s_trained_sr_map_%s_spinup%smin_length%smin_%s-%s_fold%s.csv' %(c.train_type, self.hazard, self.wofs_spinup_time,
+                                                                                             self.forecast_length, start_min, end_min, fold)
+        else:
+            sr_map_fname = '%s_trained_sr_map_%s_spinup%smin_length%smin_%s-%s_r%skm_fold%s.csv' %(c.train_type, self.hazard, self.wofs_spinup_time,
+                                                                                                   self.forecast_length, start_min, end_min,
+                                                                                                   self.radius, fold)
+        
+        return sr_map_dir, sr_map_fname
+    
     @staticmethod
-    def get_srs(f, x, thresholds):
+    def get_srs(f, x, thresholds, include_less_10 = False):
         srs = []
         for i in range(len(thresholds)):
             t = round(thresholds[i], 2)
@@ -1482,38 +1785,34 @@ class MLTrainer:
                 SR = 0
             if np.isnan(SR):
                 SR = 0
-            #srs.append(max(SR, t))
-            srs.append(SR)
+            
+            if include_less_10:
+                if len(srs) == 0:
+                    sr_max = 0
+                else:
+                    sr_max = max(srs)
+                to_append = max(sr_max, SR, t)
+                srs.append(to_append)
+            else:
+                if t < 0.1:
+                    srs.append(t)
+                else:
+                    if len(srs) == 0:
+                        sr_max = 0
+                    else:
+                        sr_max = max(srs)
+                    to_append = max(sr_max, SR, t)
+                    srs.append(to_append)
         return srs
-    
-    @staticmethod
-    def save_data(save_dir, save_file, data, filetype):
-        '''saves files while ensuring the directory exists'''
-        
-        sub_dirs = save_dir.split('/')
-        full_dir = ''
-        for i in range(len(sub_dirs)):
-            sub_dir = sub_dirs[i]
-            full_dir = full_dir + '/' + sub_dir
-            if not os.path.exists(full_dir):
-                os.mkdir(full_dir)
-        
-        if filetype == 'txt':
-            np.savetxt('%s/%s' %(save_dir, save_file), data)
-        elif filetype == 'npy':
-            np.save('%s/%s' %(save_dir, save_file), data)
-        elif filetype == 'csv':
-            data.to_csv('%s/%s' %(save_dir, save_file))
-        elif filetype == 'pkl':
-            pkl = open('%s/%s' %(save_dir, save_file), 'wb')
-            pickle.dump(data, pkl)
-            pkl.close()
     
     @staticmethod
     def probs_to_srs(probs, sr_map_df):
         '''takes in one dimensional probability field and converts it to 1d and 2d SR field'''
         
-        probs = np.around(np.array(probs), 2)
+        probs = np.array(probs)
+        zero_indices = np.where(probs < 0.01)
+        probs[zero_indices] = 0
+        probs = np.around(probs, 2)
         srs1d = np.zeros(np.array(probs).size)
         sr_dict = {}
         thresholds = sr_map_df.raw_prob.values
@@ -1529,21 +1828,22 @@ class MLTrainer:
         return srs1d, srs2d
     
     @staticmethod
-    def plot_probs(probs, obs, obs_color, init_date, title, save_dir, save_file):
+    def plot_probs(probs, obs, obs_color, levels, init_date, title, save_dir, save_file):
         wofs_template_directory = '/work/mflora/SummaryFiles/' + init_date + '/2200'
         wofs_file = 'wofs_SWT_00_' + init_date + '_2200_2200.nc'
         wofs_grid = Grid.create_wofs_grid(wofs_template_directory, wofs_file)
         
         fig, ax = plt.subplots(subplot_kw={'projection': ccrs.PlateCarree()})
         ax.add_feature(cfeature.STATES, edgecolor='black', linewidth=1)
-        levels = np.arange(0.025,1.025,0.025)
-        p = ax.contourf(wofs_grid.lons, wofs_grid.lats, probs, cmap='Blues', levels = levels, alpha = 0.8, antialiased = True, extend = 'both')
+        p = ax.contourf(wofs_grid.lons, wofs_grid.lats, probs, cmap='Blues', levels = levels, alpha = 0.8, antialiased = True, extend = 'max')
         ax.contour(wofs_grid.lons, wofs_grid.lats, obs, colors = obs_color, linewidths = 0.25)
         cbar_ax = fig.add_axes([0.155, 0.05, 0.712, 0.05])
         cbar = fig.colorbar(p, cax=cbar_ax, orientation='horizontal')
         cbar.ax.tick_params(labelsize=10)
         ax.set_title(title)
-        fig.savefig('%s/%s' %(save_dir, save_file))
+        utilities.save_data(save_dir, save_file, fig, 'png')
+        plt.close(fig)
+        
     
     
 class Wofs:
@@ -3226,6 +3526,22 @@ class ForecastSpecs:
         return new_specs
 
 
+
+    def get_minutes_from_wofs_init_to_start_valid(self):
+        '''Returns the difference between the start valid time and wofs initialization time
+            in minutes'''
+        
+
+        return ForecastSpecs.subtract_dt(self.start_valid_dt, self.wofs_init_time_dt, True)
+
+
+    def get_minutes_from_wofs_init_to_end_valid(self):
+        '''Returns the difference between the end valid time and wofs initialization
+        time in minutes '''
+
+
+        return ForecastSpecs.subtract_dt(self.end_valid_dt, self.wofs_init_time_dt, True) 
+
     @staticmethod 
     def get_date_before_00z(wofsInitTimeDT, nextDayWofsInits):
         '''Returns the 8 character string (YYYYMMDD) corresponding to the forecast
@@ -4111,6 +4427,9 @@ def main():
     wofs_direc = "/work/mflora/SummaryFiles/20210604/0200"
     ps_direc = "/work/eric.loken/wofs/probSevere"
 
+    mode = "forecast" #Now has to be a parameter that gets passed in
+    train_type = 'obs'
+
 
     #TODO: We'd need to develop some code (maybe in an outside script, etc. to determine these files/filenames
     wofs_files = ["wofs_ALL_05_20210605_0200_0225.nc", "wofs_ALL_06_20210605_0200_0230.nc", \
@@ -4178,12 +4497,24 @@ def main():
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033234_KUDX_tordetections.csv',
                   '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033456_KUDX_tordetections.csv']
 
-    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, c.nc_outdir)
+    ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, c.nc_outdir,\
+                            mode, train_type)
+
 
     #Do the generation 
-    ml_obj.generate() 
-
-
+    #ml_obj.generate()
+    
+    ############################ Training Code below here ############################
+    if c.is_train_mode:
+        dates = list(np.genfromtxt('probSevere_dates.txt').astype(int).astype(str))
+        for lead_time in c.train_lead_times:
+            print('lead time: ', lead_time, ' min')
+            for radius in c.train_radii:
+                print('radius: ', radius, ' km')
+                for haz in c.train_hazards:
+                    print(haz)
+                    trainer = MLTrainer(dates, c.forecast_length, lead_time, c.num_folds, haz, c.wofs_spinup_time, radius)
+                    trainer.do_training()
 
 if (__name__ == '__main__'):
 

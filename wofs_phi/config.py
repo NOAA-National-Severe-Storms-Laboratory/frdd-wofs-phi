@@ -11,18 +11,27 @@
 #"forecast" for forecast mode in wofs viewer, 
 #"warning" for warning mode in wofs viewer, and
 
+#NOTE: mode will now be a parameter passed in to MLGenerator
 #mode = "warning" 
-mode = "forecast"
+#mode = "forecast"
 
 #True if used for training; False if used for prediction/real-time
 #NOTE: Not used, except in Ryan's code (with TORP stuff) 
 is_train_mode = True
-#is_train_mode = False
 
-plot_in_training = True #Used for Ryan's portion with SRs
+train_mode = 'train'
+train_type = 'obs_and_warnings'
+train_radii = ['7.5', '15', '30', '39']
+train_hazards = ['tornado']
+train_lead_times = [30, 60]
+forecast_length = 60
+num_folds = 5
+wofs_spinup_time = 25
+
+plot_in_training = True
+
 num_training_vars = 269
 
-train_type = 'obs'
 model_save_dir = '/work/ryan.martz/wofs_phi_data/%s_train/models/wofs_psv2_no_torp' %(train_type)
 validation_dir = '/work/ryan.martz/wofs_phi_data/%s_train/validation_fcsts/wofs_psv2_no_torp' %(train_type)
 test_dir = '/work/ryan.martz/wofs_phi_data/%s_train/test_fcsts/wofs_psv2_no_torp' %(train_type)
@@ -33,6 +42,7 @@ torp_vars_filename = '/work/ryan.martz/wofs_phi_data/%s_train/training_data/pred
 #Path to the trained rfs 
 #rf_dir = "/work/ryan.martz/wofs_phi_data/models/wofs_psv2_no_torp/hail/wofslag_25/length_60"
 rf_dir = "/work/eric.loken/wofs/2024_update/SFE2024/rf_models"
+sr_dir = ""
 
 #Path where to save the ncdf files 
 #ncdf_save_dir = "/work/eric.loken/wofs/2024_update/SFE2024/ncdf_files"
@@ -44,13 +54,11 @@ ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
 png_outdir = ""
 
 #May or may not eventually use these
-#generate_forecasts = True #Generates the predictors array if True
-generate_forecasts = False
-generate_reports = True #Generates the reports file if True 
-save_npy = True #Tells whether or not to save the npy predictor files 
-save_ncdf = False #Tells whether or not to create/save the ncdf (realtime) files
-
-plot_forecasts = False #Tells whether or not to create the .png files for wofs viewer
+generate_forecasts = True #Generates the predictors array if True
+generate_reports = False #Generates the reports file if True 
+save_npy = False #Tells whether or not to save the npy predictor files 
+save_ncdf = True #Tells whether or not to create/save the ncdf (realtime) files
+plot_forecasts = True #Tells whether or not to create the .png files for wofs viewer
 
 #Buffer time for a report in minutes: 
 #i.e., consider reports within this many minutes of the valid period
@@ -68,12 +76,24 @@ sample_rate = 0.1
 
 #Path to full_npy directory for training
 train_fcst_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/full_npy"
-#train_obs_full_npy_dir = "/work/eric.loken/wofs/paper6/obs/full_npy"
+
 train_obs_full_npy_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/full_npy"
 
 #Path to dat directory for training
 train_fcst_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/fcst/dat"
 train_obs_dat_dir = "/work/eric.loken/wofs/2024_update/SFE2024/obs/dat"
+
+train_obs_and_warnings_full_2d_npy_dir = '/work/ryan.martz/wofs_phi_data/training_data/obs_and_warnings/full_2d_obs_and_warnings'
+train_obs_and_warnings_full_1d_npy_dir = '/work/ryan.martz/wofs_phi_data/training_data/obs_and_warnings/full_1d_obs_and_warnings'
+train_obs_and_warnings_sampled_dat_dir = '/work/ryan.martz/wofs_phi_data/training_data/obs_and_warnings/sampled_1d_obs_and_warnings'
+
+train_warnings_csv_dir = '/work/ryan.martz/wofs_phi_data/training_data/warnings/warning_csvs'
+train_warnings_full_2d_npy_dir = '/work/ryan.martz/wofs_phi_data/training_data/warnings/full_2d_warnings'
+train_warnings_full_1d_npy_dir = '/work/ryan.martz/wofs_phi_data/training_data/warnings/full_1d_warnings'
+train_warnings_sampled_1d_dat_dir = '/work/ryan.martz/wofs_phi_data/training_data/warnings/sampled_1d_warnings'
+
+#need to change this to reflect the real time directory!
+real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv'
 
 #Path to the reports coordinates directory -- i.e., where are the coords.txt 
 #files that need to be read in during training? 
@@ -122,11 +142,17 @@ predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially 
 #Fields not part of the standard wofs or ProbSevere fields that we'd like to include as extras 
 extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 
-#obs_radii_str = ["30.0", "15.0", "7.5", "39.0"]
-obs_radii_str = ["39.0", "30.0", "15.0", "7.5"] 
-obs_radii_float = [39, 30, 15, 7.5]
-#final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
-final_str_obs_radii = ["39", "30","15", "7_5"] #form to use for final ncdf files
+
+#obs_radii = ["39", "30", "15", "7.5"]
+#obs_radii_str = ["39.0", "30.0", "15.0", "7.5"] 
+#obs_radii_float = [39, 30, 15, 7.5]
+#final_str_obs_radii = ["39", "30","15", "7_5"] #form to use for final ncdf files
+
+obs_radii = ["39"]
+obs_radii_str = ["39.0"]
+obs_radii_float = [39]
+final_str_obs_radii = ["39"] #form to use for final ncdf files 
+
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
 wofs_fields_file = "standard_wofs_variables.txt"
@@ -146,11 +172,9 @@ single_pt_file = "single_point_fields.txt"
 
 
 bottom_hour_inits = ["1730", "1830", "1930", "2030", "2130", "2230", "2330", "0030", "0130",\
-                     "0230", "0330", "0430", "0530", "0630", "0730", "0830", "0930", "1030",\
-                     "1130", "1230", "1330", "1430", "1530", "1630"]
+                     "0230", "0330", "0430"]
 top_hour_inits = ["1700", "1800", "1900", "2000", "2100", "2200", "2300", "0000", "0100",\
-                     "0200", "0300", "0400", "0500", "0600", "0700", "0800", "0900", "1000",\
-                     "1100", "1200", "1300", "1400", "1500", "1600"]
+                     "0200", "0300", "0400", "0500"]
 
 all_wofs_init_times = ["1700", "1730", "1800", "1830", "1900", "1930", "2000", "2030", "2100",\
                         "2130", "2200", "2230", "2300", "2330", "0000", "0030", "0100", "0130",\
