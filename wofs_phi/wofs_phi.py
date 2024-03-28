@@ -213,7 +213,7 @@ class MLGenerator:
                         plot_wofs_phi_forecast_mode(full_ncdf_outname, png_path, \
                             forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
                             forecast_specs.start_valid_dt, forecast_specs.end_valid_dt,\
-                            forecast_specs.forecast_window)
+                            forecast_specs.forecast_window, self.train_types)
 
  
                     #TODO: Will tackle this after handling forecast mode 
@@ -222,7 +222,7 @@ class MLGenerator:
                         plot_wofs_phi_warning_mode(full_ncdf_outname, png_path, \
                             forecast_specs.wofs_init_time_dt, forecast_specs.ps_init_time_dt, \
                             forecast_specs.start_valid_dt, forecast_specs.end_valid_dt,\
-                            forecast_specs.forecast_window)
+                            forecast_specs.forecast_window, self.train_types)
 
 
 
@@ -338,8 +338,14 @@ class MLGenerator:
         return nc_name
 
     @staticmethod
-    def get_sr_filename(hazard, startmin, length, train_type, radius):
-        endmin = startmin + length
+    def get_sr_filename(hazard, startmin, length, train_type, radius, modeStr):
+        #@modeStr is either "forecast" or "warning", depending on which mode we're in
+        if (modeStr == "warning"):
+            startmin = 30
+            endmin = 90 
+        else: 
+            endmin = startmin + length
+
         if train_type == 'warnings':
             sr_map_fname = '%s_%s-%smin_%s_sr_map.csv' %(train_type, startmin, endmin, hazard)
         else:
@@ -444,7 +450,7 @@ class MLPrediction:
                     mlp.set_probs(grid_obj)
 
                     #TODO: Set the SR probs (if we're using SR mapping)
-                    mlp.set_sr_probs(specs, train_type, radius_float)
+                    mlp.set_sr_probs(specs, train_type, radius_float, mode_type)
 
                     #Append to list 
                     mlp_list.append(mlp) 
@@ -459,18 +465,23 @@ class MLPrediction:
         return 
 
 
-    def set_sr_probs(self, specs_obj, train_type, radius):
+    def set_sr_probs(self, specs_obj, train_type, radius, mode_str):
         #Maps the raw probabilities to success ratios and assigns to class attribute
         #srs2d
         #@specs_obj is a forecast specs object
+        #@mode_str is the string corresponding to forecast or warning mode :
+            #"forecast" or "warning"
     
         #startmin = int((specs_obj.start_valid_dt - specs_obj.wofs_init_time_dt).seconds/60)
         startmin = specs_obj.get_minutes_from_wofs_init_to_start_valid()
         
-        sr_map_fname = MLGenerator.get_sr_filename(self.hazard, startmin, self.time_window, train_type, radius)
+        sr_map_fname = MLGenerator.get_sr_filename(self.hazard, startmin, self.time_window, train_type, \
+                            radius, mode_str)
         sr_map_df = pd.read_csv('%s/%s' %(c.real_time_sr_map_dir, sr_map_fname))
-        
-        probs = np.array(self.probs1d)
+       
+        probs1d = copy.deepcopy(self.probs1d) 
+        #probs = np.array(self.probs1d)
+        probs = np.array(probs1d) 
         zero_indices = np.where(probs < 0.01)
         probs[zero_indices] = 0
         probs = np.around(probs, 2)

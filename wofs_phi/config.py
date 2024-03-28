@@ -54,8 +54,7 @@ ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
 png_outdir = ""
 
 #May or may not eventually use these
-#generate_forecasts = True #Generates the predictors array if True
-generate_forecasts = True
+generate_forecasts = True #Generates the predictors array if True
 generate_reports = False #Generates the reports file if True 
 save_npy = False #Tells whether or not to save the npy predictor files 
 save_ncdf = True #Tells whether or not to create/save the ncdf (realtime) files
@@ -144,13 +143,15 @@ predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] #how far to "look" spatially 
 extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 
 
-obs_radii = ["39", "30", "15", "7.5"]
+#obs_radii = ["39", "30", "15", "7.5"]
+#obs_radii_str = ["39.0", "30.0", "15.0", "7.5"] 
+#obs_radii_float = [39, 30, 15, 7.5]
+#final_str_obs_radii = ["39", "30","15", "7_5"] #form to use for final ncdf files
 
-#obs_radii_str = ["30.0", "15.0", "7.5", "39.0"]
-obs_radii_str = ["39.0", "30.0", "15.0", "7.5"] 
-obs_radii_float = [39, 30, 15, 7.5]
-#final_str_obs_radii = ["30", "15", "7_5", "39"] #form to use for final ncdf files
-final_str_obs_radii = ["39", "30","15", "7_5"] #form to use for final ncdf files
+obs_radii = ["39"]
+obs_radii_str = ["39.0"]
+obs_radii_float = [39]
+final_str_obs_radii = ["39"] #form to use for final ncdf files 
 
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 

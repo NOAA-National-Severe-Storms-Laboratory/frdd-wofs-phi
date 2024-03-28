@@ -532,10 +532,10 @@ def create_forecast_mode_training(train_types):
         "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
 
     #dates = dates[37:]
-    #training_init_times = ["2300"] 
+    training_init_times = ["2300"] 
     dates = ["20190506"] 
     #training_init_times = ["2200", "2300", "0000"]
-    training_init_times = ["2300"] 
+    #training_init_times = ["2300"] 
     #dates = ["20190501"] 
     #training_init_times = ["1900", "2000"] 
     #training_init_times = ["2030"] 
@@ -560,7 +560,9 @@ def create_forecast_mode_training(train_types):
     #lead_times = [30, 60]
     #lead_times = [60]
     #lead_times = [90, 120] 
-    lead_times = [30] 
+    #lead_times = [30] 
+
+    lead_times = [60, 90, 120]
 
     #Get the data
     for lead_time in lead_times:
@@ -631,9 +633,10 @@ def create_warning_mode_training(train_types):
 
     dates = ["20190506"] 
     #start_times = ["2205", "2235", "2305", "2335", "0005"]
-    start_times = ["2200", "2230", "2300", "2330", "0000"] 
+    #start_times = ["2200", "2230", "2300", "2330", "0000"] 
     #dates = ["20200507"]
     #start_times = ["2335", "2340", "2345", "2350"] 
+    start_times = ["2300", "2305", "2310", "2315"] 
 
     #NOTE: date is the before-00z date 
     for d in range(len(dates)):
@@ -791,8 +794,8 @@ def main():
     '''Main method'''
 
     #SET mode here 
-    mode_to_generate = "forecast"
-    #mode_to_generate = "warning"
+    #mode_to_generate = "forecast"
+    mode_to_generate = "warning"
 
     #SET train type here 
     #options: "obs", "warnings", or "obs_and_warnings"
