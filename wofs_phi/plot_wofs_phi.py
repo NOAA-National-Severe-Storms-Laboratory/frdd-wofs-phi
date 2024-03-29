@@ -15,7 +15,7 @@ from wofs.plotting.data_preprocessing import DataPreProcessor
 from wofs.plotting.util import check_file_type
 from wofs.plotting.wofs_colors import WoFSColors as wc
 from datetime import datetime, timedelta
-import config as c 
+from . import config as c 
 import matplotlib
 import copy 
 

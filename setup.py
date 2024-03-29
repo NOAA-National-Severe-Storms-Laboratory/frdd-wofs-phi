@@ -13,7 +13,7 @@ here = pathlib.Path(__file__).parent.resolve()
 long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 __key__ = 'PACKAGE_VERSION'
-__version__= os.environ[__key__] if __key__ in os.environ else '0.0.4'
+__version__= os.environ[__key__] if __key__ in os.environ else '0.0.6'
 
 setup(
     name='frdd-wofs-phi', 

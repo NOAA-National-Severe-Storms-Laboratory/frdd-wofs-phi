@@ -48,20 +48,23 @@ import datetime as dt
 import netCDF4 as nc
 import os
 import copy
+import re
 from sklearn.metrics import roc_curve, roc_auc_score, brier_score_loss
 from sklearn.calibration import calibration_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import xarray as xr
-import config as c
-import utilities
-import predictor_extractor as pex
-
+from . import config as c
+from . import utilities
+from . import predictor_extractor as pex
 import warnings
 import cartopy.feature as cfeature
 import cartopy.crs as ccrs
+from wofs.common.zarr import open_dataset
+from wofs.common import remove_reserved_keys
+from wofs.post.utils import save_dataset
 
-#from plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mode
+from .plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mode
 
 
 #_wofs = '/home/monte.flora/python_packages/frdd-wofs-post'
@@ -197,16 +200,16 @@ class MLGenerator:
                 #NOTE: All radii and hazards will go into the same ncdf file 
 
                 MLPrediction.create_rf_predictions(forecast_specs, fcst_grid, one_d_pred_array, \
-                        wofs.xarr, self.mode, self.train_types) 
+                        wofs.xarr, self.mode, self.train_types, self.nc_outdir) 
 
                 if (c.plot_forecasts == True):
                     
                     #Plot the forecasts to png 
-                    full_ncdf_outname = "%s/%s/%s" %(c.ncdf_save_dir, self.mode,\
+                    full_ncdf_outname = "%s/%s/%s" %(self.nc_outdir, self.mode,\
                                                 MLGenerator.get_ncdf_outname(forecast_specs))
 
                     #TODO: Probably will update this later; for now, save to same path as netcdf 
-                    png_path = "%s/%s" %(c.ncdf_save_dir, self.mode)
+                    png_path = "%s/%s" %(self.nc_outdir, self.mode)
 
                     if (self.mode == "forecast"):
                                 
@@ -402,7 +405,7 @@ class MLPrediction:
 
     @classmethod
     def create_rf_predictions(cls, specs, grid_obj, predictor_array, wofs_xarr, \
-                    mode_type, train_types):
+                    mode_type, train_types, nc_outdir):
         '''Factory method for creating RF predictions.
             @specs is a ForecastSpecs object
             @grid_obj is a Grid object
@@ -458,7 +461,7 @@ class MLPrediction:
 
         #Once we have a list of mlp objects, save to netcdf file 
         FinalNCFile.create_final_ncdf_from_mlps(mlp_list, specs, grid_obj, wofs_xarr,\
-                        mode_type) 
+                        mode_type, nc_outdir) 
                 
 
 
@@ -608,7 +611,7 @@ class FinalNCFile:
 
     @classmethod
     def create_final_ncdf_from_mlps(cls, mlps_list, fcstSpecs, gridObject, wofsXR,\
-            mode_str):
+            mode_str, nc_outdir):
 
         ''' Factory method for creating FinalNCFile object from list of MLPrediction objects.
             @mlps_list is a list of MLPrediction objects.
@@ -643,7 +646,7 @@ class FinalNCFile:
         print (nc_file_obj.xr) 
 
         #Save to netcdf file 
-        nc_file_obj.save_ncdf()
+        nc_file_obj.save_ncdf(nc_outdir)
 
 
         return 
@@ -713,10 +716,10 @@ class FinalNCFile:
         return 
 
 
-    def save_ncdf(self):
+    def save_ncdf(self, nc_outdir = c.ncdf_save_dir):
 
-        #from wofs.post.utils import save_dataset #save_dataset(filename, xarray_data)
-        full_outname = "%s/%s/%s" %(c.ncdf_save_dir, self.mode, self.outname) 
+         #save_dataset(filename, xarray_data)
+        full_outname = "%s/%s/%s" %(nc_outdir, self.mode, self.outname) 
 
         save_dataset(full_outname, self.xr) 
 
@@ -2180,12 +2183,12 @@ class WoFS_Agg:
 
             if (c.use_ALL_files == False):
                 try: 
-                    data = nc.Dataset(full_legacy_filename) 
+                    data = open_dataset(full_legacy_filename) 
                 except FileNotFoundError:
                     try: 
                         #Try to load the ALL file if we can if the
                         #legacy file isn't there 
-                        data = nc.Dataset(full_filename) 
+                        data = open_dataset(full_filename) 
                     except FileNotFoundError:
                         print ("Neither %s nor %s found. Moving on." \
                                 %(full_legacy_filename, full_filename))
@@ -2194,14 +2197,14 @@ class WoFS_Agg:
 
             else: #if we are using the ALL files 
                 try: 
-                    data = nc.Dataset(full_filename)
+                    data = open_dataset(full_filename)
                 except FileNotFoundError:
                     print ("%s not found. Moving on." %full_filename) 
                     continue 
 
 
             #Extract relevant variable 
-            var_data = data[self.wofs_var_name][:]
+            var_data = data.variables[self.wofs_var_name][:]
 
             #Get rid of nans and inf values
             np.nan_to_num(var_data, copy=False, nan=c.nan_replace_value,\
@@ -2394,10 +2397,10 @@ class Grid:
         #Add capabilities to account for ALL or legacy file names
         if (c.use_ALL_files == True):
             try: 
-                ds = nc.Dataset(full_wofs_file)
+                ds = open_dataset(full_wofs_file)
             except FileNotFoundError:
                 try: 
-                    ds = nc.Dataset(full_legacy_wofs_file)
+                    ds = open_dataset(full_legacy_wofs_file)
                 except:
                     print ("Neither %s nor %s found" %(full_wofs_file, full_legacy_wofs_file))
                     quit()
@@ -2406,26 +2409,26 @@ class Grid:
         else: 
 
             try: 
-                ds = nc.Dataset(full_legacy_wofs_file)
+                ds = open_dataset(full_legacy_wofs_file)
             except FileNotFoundError:
                 try: 
-                    ds = nc.Dataset(full_wofs_file) 
+                    ds = open_dataset(full_wofs_file) 
                 except:
                     print ("Neither %s nor %s found" \
                             %(full_legacy_wofs_file, full_wofs_file))
                     quit() 
 
 
-        ny = int(ds.__dict__['ny'])
-        nx = int(ds.__dict__['nx'])
+        ny = int(ds.attrs['ny'])
+        nx = int(ds.attrs['nx'])
 
 
-        wofsLats = ds['xlat'][:]
-        wofsLons = ds['xlon'][:]
+        wofsLats = ds.variables['xlat'][:]
+        wofsLons = ds.variables['xlon'][:]
 
-        Tlat1 = ds.__dict__['TRUELAT1']
-        Tlat2 = ds.__dict__['TRUELAT2']
-        Stlon = ds.__dict__['STAND_LON']
+        Tlat1 = ds.attrs['TRUELAT1']
+        Tlat2 = ds.attrs['TRUELAT2']
+        Stlon = ds.attrs['STAND_LON']
 
         SW_lat = wofsLats[0,0]
         NE_lat = wofsLats[-1,-1]
@@ -3738,6 +3741,10 @@ class ForecastSpecs:
         Finds/returns the (string) probSevere initialization time/date from the ProbSevere file. 
 
         '''
+
+        m = re.match('.*_(?P<date>\d{8})_(?P<time>\d{4})\d{2}.json$', ps_file)
+        if m != None:
+            return (m.group('time'), m.group('date'))
 
         if (ps_version == 2):
             split_str = ps_file.split(".") 
