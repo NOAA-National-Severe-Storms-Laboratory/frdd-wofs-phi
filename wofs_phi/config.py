@@ -19,10 +19,10 @@
 #NOTE: Not used, except in Ryan's code (with TORP stuff) 
 is_train_mode = True
 
-train_mode = 'train'
-train_type = 'obs_and_warnings'
+train_mode = 'validate'
+train_type = 'obs'
 train_radii = ['7.5', '15', '30', '39']
-train_hazards = ['tornado']
+train_hazards = ['hail', 'wind']
 train_lead_times = [30, 60]
 forecast_length = 60
 num_folds = 5
