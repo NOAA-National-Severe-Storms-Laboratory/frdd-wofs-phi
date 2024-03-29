@@ -61,16 +61,16 @@ import warnings
 import cartopy.feature as cfeature
 import cartopy.crs as ccrs
 
-from plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mode
+#from plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mode
 
 
 #_wofs = '/home/monte.flora/python_packages/frdd-wofs-post'
 _wofs = '/home/eric.loken/python_packages/frdd-wofs-post'
 
 sys.path.insert(0, _wofs)
-from wofs.common import remove_reserved_keys
-from wofs.common.zarr import open_dataset
-from wofs.post.utils import save_dataset #save_dataset(filename, xarray_data)
+#from wofs.common import remove_reserved_keys
+#from wofs.common.zarr import open_dataset
+#from wofs.post.utils import save_dataset #save_dataset(filename, xarray_data)
 
 
 class MLGenerator: 
@@ -1287,10 +1287,10 @@ class MLTrainer:
         utilities.save_data(all_probs_save_dir, all_events_fname, all_events, 'npy')
         
         thresholds = np.round(np.arange(0,1.01,0.01), 2)
-        if self.hazard == 'tornado':
-            srs = MLTrainer.get_srs(all_probs, all_events, thresholds, include_less_10 = True)
-        else:
-            srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
+        #if self.hazard == 'tornado':
+        srs = MLTrainer.get_srs(all_probs, all_events, thresholds, include_less_10 = True)
+        #else:
+        #    srs = MLTrainer.get_srs(all_probs, all_events, thresholds)
         df = pd.DataFrame({'raw_prob': thresholds, 'SR': srs})
         sr_map_dir, sr_map_fname = self.get_sr_map_fname_dir(fold)
         utilities.save_data(sr_map_dir, sr_map_fname, df, 'csv')
