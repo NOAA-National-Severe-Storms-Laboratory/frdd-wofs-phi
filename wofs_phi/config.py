@@ -61,10 +61,10 @@ png_outdir = ""
 
 #May or may not eventually use these
 generate_forecasts = True #Generates the predictors array if True
-generate_reports = True #Generates the reports file if True 
-save_npy = True #Tells whether or not to save the npy predictor files 
-save_ncdf = False #Tells whether or not to create/save the ncdf (realtime) files
-plot_forecasts = False #Tells whether or not to create the .png files for wofs viewer
+generate_reports = False #Generates the reports file if True 
+save_npy = False #Tells whether or not to save the npy predictor files 
+save_ncdf = True #Tells whether or not to create/save the ncdf (realtime) files
+plot_forecasts = True #Tells whether or not to create the .png files for wofs viewer
 
 #Buffer time for a report in minutes: 
 #i.e., consider reports within this many minutes of the valid period
@@ -108,7 +108,8 @@ reps_coords_dir = "/work/eric.loken/wofs/new_torn/storm_events_reports/fromThea"
 
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
-use_ALL_files = False
+use_ALL_files = True
+#use_ALL_files = False
 
 wofs_base_path = "/work/mflora/SummaryFiles" #Obviously, will need to change on cloud 
 
@@ -121,7 +122,8 @@ ps_version = 2 #i.e., which probSevere version is being used 2 for v2, 3 for v3
 dx_km = 3.0 #horizontal grid spacing of wofs in km 
 ps_thresh = 0.01 #ps objects must have probs greater than or equal to this amount to be considered
 
-max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
+#max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
+max_ps_extrap_time = 241.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
 
 #Amount of time (in minutes) to go back (relative to first PS file) 
 ps_time_to_go_back = 180.0
