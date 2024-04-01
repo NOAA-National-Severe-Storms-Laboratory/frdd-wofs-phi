@@ -515,7 +515,7 @@ def create_forecast_mode_training(train_types):
 
     window = 60 #Focus on 60 minute windows 
     
-    date_file = "probSevere_dates.txt"
+    date_file = (c.base_path/"probSevere_dates.txt")
     #date_file = "first_obs_dates.txt" 
 
     dates = read_txt(date_file) 
@@ -525,9 +525,13 @@ def create_forecast_mode_training(train_types):
     report_radius = 39 #Only really used to check if reports file 
                         #already exists 
 
-    training_init_times = ["1700", "1730", "1800", "1830", "1900",\
-        "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
-        "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
+    #training_init_times = ["1700", "1730", "1800", "1830", "1900",\
+    #    "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
+    #    "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
+    training_init_times = ["1700", "1800", "1900",\
+        "2000", "2100", "2200", \
+        "2300", "0000", "0100", "0200"]
+
 
     #dates = dates[37:]
     #training_init_times = ["2300"] 

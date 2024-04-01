@@ -107,14 +107,20 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
 
         png_save_name = "%s_f%s.png" %(v, str(lead_time_minutes).zfill(3))
 
+        color_cont_data = data[v]
+
         if ("tornado" in v):
             conf_kwargs_dict = {'levels': levels_tornado, 'extend': extend_var, 'cmap': my_cmap, 'alpha': alpha}
+            
+            #Mask out low or zero probabilities
+            color_cont_data[color_cont_data<levels_tornado[0]] = -1.0
 
 
         else: 
             conf_kwargs_dict = {'levels': levels, 'extend': extend_var, 'cmap': my_cmap, 'alpha': alpha}
 
-
+            #Mask out low or zero probabilities
+            color_cont_data[color_cont_data<levels[0]] = -1.0
 
         plotter = WoFSPlotter(file_path=nc_fname, \
                                 outdir = png_outdir,\
@@ -125,8 +131,11 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
 
        
         #Mask out low or zero probabilities
-        color_cont_data = data[v] 
-        color_cont_data[color_cont_data<0.01] = -1.0 
+        #color_cont_data = data[v] 
+        #color_cont_data[color_cont_data<0.01] = -1.0 
+       
+     
+        
         #if ("tornado" in v):
         #    color_cont_data[color_cont_data < levels_tornado[0]] = -1.0
         #else: 
