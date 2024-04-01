@@ -19,6 +19,13 @@
 #======================
 # Imports
 #======================
+
+import sys 
+_wofs = '/home/eric.loken/python_packages/frdd-wofs-post'
+_wofsphi = '/home/eric.loken/python_packages/frdd-wofs-phi'
+sys.path.insert(0, _wofs)
+sys.path.insert(0, _wofsphi)
+
 from shapely.geometry import Point, MultiPolygon, Polygon, LineString
 from shapely.prepared import prep
 from shapely import geometry
@@ -37,7 +44,7 @@ from matplotlib.patches import Polygon as PolygonMPL
 import math
 #from scipy.ndimage.filters import maximum_filter, minimum_filter
 from scipy.ndimage import gaussian_filter, maximum_filter, minimum_filter
-import sys
+#import sys
 import geopandas as gpd
 import multiprocessing as mp
 import itertools
@@ -68,9 +75,12 @@ from .plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mo
 
 
 #_wofs = '/home/monte.flora/python_packages/frdd-wofs-post'
-_wofs = '/home/eric.loken/python_packages/frdd-wofs-post'
+#_wofs = '/home/eric.loken/python_packages/frdd-wofs-post'
+#_wofsphi = '/home/eric.loken/python_packages/frdd-wofs-phi'
+#sys.path.insert(0, _wofs)
+#sys.path.insert(0, _wofsphi) 
 
-sys.path.insert(0, _wofs)
+
 #from wofs.common import remove_reserved_keys
 #from wofs.common.zarr import open_dataset
 #from wofs.post.utils import save_dataset #save_dataset(filename, xarray_data)
@@ -2183,12 +2193,12 @@ class WoFS_Agg:
 
             if (c.use_ALL_files == False):
                 try: 
-                    data = open_dataset(full_legacy_filename) 
+                    data = open_dataset(full_legacy_filename, decode_times=False) 
                 except FileNotFoundError:
                     try: 
                         #Try to load the ALL file if we can if the
                         #legacy file isn't there 
-                        data = open_dataset(full_filename) 
+                        data = open_dataset(full_filename, decode_times=False) 
                     except FileNotFoundError:
                         print ("Neither %s nor %s found. Moving on." \
                                 %(full_legacy_filename, full_filename))
@@ -2197,7 +2207,7 @@ class WoFS_Agg:
 
             else: #if we are using the ALL files 
                 try: 
-                    data = open_dataset(full_filename)
+                    data = open_dataset(full_filename, decode_times=False)
                 except FileNotFoundError:
                     print ("%s not found. Moving on." %full_filename) 
                     continue 
@@ -2397,10 +2407,10 @@ class Grid:
         #Add capabilities to account for ALL or legacy file names
         if (c.use_ALL_files == True):
             try: 
-                ds = open_dataset(full_wofs_file)
+                ds = open_dataset(full_wofs_file, decode_times=False)
             except FileNotFoundError:
                 try: 
-                    ds = open_dataset(full_legacy_wofs_file)
+                    ds = open_dataset(full_legacy_wofs_file, decode_times=False)
                 except:
                     print ("Neither %s nor %s found" %(full_wofs_file, full_legacy_wofs_file))
                     quit()
@@ -2409,10 +2419,10 @@ class Grid:
         else: 
 
             try: 
-                ds = open_dataset(full_legacy_wofs_file)
+                ds = open_dataset(full_legacy_wofs_file, decode_times=False)
             except FileNotFoundError:
                 try: 
-                    ds = open_dataset(full_wofs_file) 
+                    ds = open_dataset(full_wofs_file, decode_times=False) 
                 except:
                     print ("Neither %s nor %s found" \
                             %(full_legacy_wofs_file, full_wofs_file))
@@ -2930,6 +2940,8 @@ class PS:
                 orig_extrap_points = PS.get_extrapolation_points(fcst_specs.ps_lead_time_end,\
                     obj_motion_east, obj_motion_south, c.dx_km, \
                     fcst_specs.adjustable_radii_gridpoint)
+
+                print (orig_extrap_points)
 
 
                 #Now, add the adjustable radii to the set of extrapolation points 
