@@ -132,7 +132,7 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
         #else: 
         #    color_cont_data[color_cont_data < levels[0]] = -1.0
         
-        ps_init_time_full_string = "ProbSevere Init: %s, %s UTC" %(ps_init_time_date_str, ps_init_time_str)
+        ps_init_time_full_string = "ProbSevere Valid: %s, %s UTC" %(ps_init_time_date_str, ps_init_time_str)
 
         plotter.plot(var_name=v, \
                         color_cont_data=color_cont_data,\
@@ -260,7 +260,7 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
                         'linestyles': 'solid', 'colors': colors,\
                         'alpha': alpha, 'add_labels': True}
 
-        ps_init_time_full_string = "ProbSevere Init: %s, %s UTC" %(ps_init_time_date_str, ps_init_time_str)
+        ps_init_time_full_string = "ProbSevere Valid: %s, %s UTC" %(ps_init_time_date_str, ps_init_time_str)
 
         plotter = WoFSPlotter(file_path=nc_fname, \
                                 outdir = png_outdir,\

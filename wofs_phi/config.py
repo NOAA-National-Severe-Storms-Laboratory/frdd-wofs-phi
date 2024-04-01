@@ -21,10 +21,12 @@ import pathlib
 #NOTE: Not used, except in Ryan's code (with TORP stuff) 
 is_train_mode = True
 
+
 base_path = pathlib.Path(__file__).parent.resolve()
 
-train_mode = 'validate'
-train_type = 'obs'
+train_mode = 'train'
+train_type = 'obs_and_warnings' #NOTE: Probably no longer needed, or change to train_types
+
 train_radii = ['7.5', '15', '30', '39']
 train_hazards = ['hail', 'wind']
 train_lead_times = [30, 60]
@@ -59,10 +61,10 @@ png_outdir = ""
 
 #May or may not eventually use these
 generate_forecasts = True #Generates the predictors array if True
-generate_reports = False #Generates the reports file if True 
-save_npy = False #Tells whether or not to save the npy predictor files 
-save_ncdf = True #Tells whether or not to create/save the ncdf (realtime) files
-plot_forecasts = True #Tells whether or not to create the .png files for wofs viewer
+generate_reports = True #Generates the reports file if True 
+save_npy = True #Tells whether or not to save the npy predictor files 
+save_ncdf = False #Tells whether or not to create/save the ncdf (realtime) files
+plot_forecasts = False #Tells whether or not to create the .png files for wofs viewer
 
 #Buffer time for a report in minutes: 
 #i.e., consider reports within this many minutes of the valid period
