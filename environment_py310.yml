@@ -1,0 +1,7 @@
+name: build_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy=1.22.4

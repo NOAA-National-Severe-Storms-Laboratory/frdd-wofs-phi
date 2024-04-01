@@ -5,6 +5,8 @@
 # run wofs_phi.py 
 #==================================
 
+import os
+import pathlib
 
 #TODO: It's possible the below won't be needed--Not sure yet. 
 #Options are: 
@@ -19,10 +21,14 @@
 #NOTE: Not used, except in Ryan's code (with TORP stuff) 
 is_train_mode = True
 
+
+base_path = pathlib.Path(__file__).parent.resolve()
+
 train_mode = 'train'
 train_type = 'obs_and_warnings' #NOTE: Probably no longer needed, or change to train_types
+
 train_radii = ['7.5', '15', '30', '39']
-train_hazards = ['tornado']
+train_hazards = ['hail', 'wind']
 train_lead_times = [30, 60]
 forecast_length = 60
 num_folds = 5
@@ -155,11 +161,11 @@ final_str_obs_radii = ["39"] #form to use for final ncdf files
 
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
-wofs_fields_file = "standard_wofs_variables.txt"
-wofs_methods_file = "standard_wofs_methods.txt"
+wofs_fields_file = (base_path / "standard_wofs_variables.txt")
+wofs_methods_file = (base_path / "standard_wofs_methods.txt")
 
-all_fields_file = "all_fields.txt" #Holds all the predictor fields
-all_methods_file = "all_methods.txt" #Holds all the preprocessing methods
+all_fields_file = (base_path / "all_fields.txt") #Holds all the predictor fields
+all_methods_file = (base_path / "all_methods.txt") #Holds all the preprocessing methods
 
 wofs_dir = "/work/mflora/SummaryFiles/"
 ps_dir = "/work/eric.loken/wofs/probSevere/"
@@ -168,7 +174,7 @@ ps_search_minutes = 180 #how long before start time do we need to search for ps 
 ps_recent_file_threshold = 10 #need a file in last __ minutes to do training/real time running
 
 #Holds all the variables that just get taken from the point of prediction
-single_pt_file = "single_point_fields.txt" 
+single_pt_file = (base_path / "single_point_fields.txt")
 
 
 bottom_hour_inits = ["1730", "1830", "1930", "2030", "2130", "2230", "2330", "0030", "0130",\
@@ -246,3 +252,10 @@ torp_no_conv = ["RangeInterval"]
 torp_predictors = ["RangeInterval","AzShear_max","AzShear_min","AzShear_25th_percentile","AzShear_median","DivShear_max","DivShear_min","DivShear_median","DivShear_75th_percentile","PhiDP_AzGradient_median","PhiDP_DivGradient_min","PhiDP_DivGradient_25th_percentile","PhiDP_DivGradient_median","PhiDP_DivGradient_75th_percentile","PhiDP_Gradient_max","PhiDP_Gradient_min","PhiDP_Gradient_median","PhiDP_MedianFiltered_max","PhiDP_MedianFiltered_min","Reflectivity_AzGradient_max","Reflectivity_AzGradient_min","Reflectivity_AzGradient_median","Reflectivity_DivGradient_min","Reflectivity_DivGradient_median","Reflectivity_Gradient_max","Reflectivity_Gradient_min","Reflectivity_MedianFiltered_max","Reflectivity_MedianFiltered_min","RhoHV_AzGradient_25th_percentile","RhoHV_AzGradient_median","RhoHV_AzGradient_75th_percentile","RhoHV_DivGradient_median","RhoHV_Gradient_max","RhoHV_Gradient_min","RhoHV_MedianFiltered_max","RhoHV_MedianFiltered_min","RhoHV_MedianFiltered_median","SpectrumWidth_AzGradient_min","SpectrumWidth_AzGradient_25th_percentile","SpectrumWidth_AzGradient_median","SpectrumWidth_AzGradient_75th_percentile","SpectrumWidth_DivGradient_min","SpectrumWidth_DivGradient_25th_percentile","SpectrumWidth_DivGradient_median","SpectrumWidth_DivGradient_75th_percentile","SpectrumWidth_Gradient_min","SpectrumWidth_MedianFiltered_max","SpectrumWidth_MedianFiltered_min","Velocity_Gradient_min","Velocity_Gradient_25th_percentile","Velocity_MedianFiltered_absmax","Velocity_MedianFiltered_absmin","Velocity_MedianFiltered_median","Zdr_AzGradient_median","Zdr_DivGradient_min","Zdr_DivGradient_25th_percentile","Zdr_DivGradient_median","Zdr_DivGradient_75th_percentile","Zdr_Gradient_min","Zdr_MedianFiltered_max","Zdr_MedianFiltered_min","Zdr_MedianFiltered_median"]
 
 torp_all_predictors = ["age","prob",torp_prob_change_1_str,torp_prob_change_2_str,"RangeInterval","AzShear_max","AzShear_min","AzShear_25th_percentile","AzShear_median","DivShear_max","DivShear_min","DivShear_median","DivShear_75th_percentile","PhiDP_AzGradient_median","PhiDP_DivGradient_min","PhiDP_DivGradient_25th_percentile","PhiDP_DivGradient_median","PhiDP_DivGradient_75th_percentile","PhiDP_Gradient_max","PhiDP_Gradient_min","PhiDP_Gradient_median","PhiDP_MedianFiltered_max","PhiDP_MedianFiltered_min","Reflectivity_AzGradient_max","Reflectivity_AzGradient_min","Reflectivity_AzGradient_median","Reflectivity_DivGradient_min","Reflectivity_DivGradient_median","Reflectivity_Gradient_max","Reflectivity_Gradient_min","Reflectivity_MedianFiltered_max","Reflectivity_MedianFiltered_min","RhoHV_AzGradient_25th_percentile","RhoHV_AzGradient_median","RhoHV_AzGradient_75th_percentile","RhoHV_DivGradient_median","RhoHV_Gradient_max","RhoHV_Gradient_min","RhoHV_MedianFiltered_max","RhoHV_MedianFiltered_min","RhoHV_MedianFiltered_median","SpectrumWidth_AzGradient_min","SpectrumWidth_AzGradient_25th_percentile","SpectrumWidth_AzGradient_median","SpectrumWidth_AzGradient_75th_percentile","SpectrumWidth_DivGradient_min","SpectrumWidth_DivGradient_25th_percentile","SpectrumWidth_DivGradient_median","SpectrumWidth_DivGradient_75th_percentile","SpectrumWidth_Gradient_min","SpectrumWidth_MedianFiltered_max","SpectrumWidth_MedianFiltered_min","Velocity_Gradient_min","Velocity_Gradient_25th_percentile","Velocity_MedianFiltered_absmax","Velocity_MedianFiltered_absmin","Velocity_MedianFiltered_median","Zdr_AzGradient_median","Zdr_DivGradient_min","Zdr_DivGradient_25th_percentile","Zdr_DivGradient_median","Zdr_DivGradient_75th_percentile","Zdr_Gradient_min","Zdr_MedianFiltered_max","Zdr_MedianFiltered_min","Zdr_MedianFiltered_median"]
+
+
+### If this environment variable is set, then it likely running in the cloud
+if 'WOFS_ML_PATH' in os.environ:
+    real_time_sr_map_dir = os.environ['WOFS_ML_PATH']
+    rf_dir = os.environ['WOFS_ML_PATH']
+    

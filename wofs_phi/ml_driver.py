@@ -2,12 +2,10 @@
 # Script that will drive the ML training and testing
 #===================================================
 
-from wofs_phi import * 
-import config as c
+from .wofs_phi import * 
+from . import config as c
 import os.path
 from itertools import compress 
-
-
 
 #Could also call this, e.g., FileObtainer or something. 
 class MLDriver:
