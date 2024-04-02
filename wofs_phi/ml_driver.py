@@ -621,7 +621,7 @@ def create_warning_mode_training(train_types):
     mode = "warning" 
 
     window = 60 #Focus on 60 minute windows 
-    date_file = "probSevere_dates.txt"
+    date_file = (c.base_path/"probSevere_dates.txt")
     dates = read_txt(date_file)
     torpFiles = []
     report_radius = 39 #in km 
@@ -797,8 +797,8 @@ def main():
     '''Main method'''
 
     #SET mode here 
-    mode_to_generate = "forecast"
-    #mode_to_generate = "warning"
+    #mode_to_generate = "forecast"
+    mode_to_generate = "warning"
 
     #SET train type here 
     #options: "obs", "warnings", or "obs_and_warnings"

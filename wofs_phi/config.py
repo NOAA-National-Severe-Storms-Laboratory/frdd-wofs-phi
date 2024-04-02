@@ -59,12 +59,24 @@ ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
 #netcdf files 
 png_outdir = ""
 
+######## Main things to change on cloud#######
+
 #May or may not eventually use these
 generate_forecasts = True #Generates the predictors array if True
 generate_reports = False #Generates the reports file if True 
 save_npy = False #Tells whether or not to save the npy predictor files 
 save_ncdf = True #Tells whether or not to create/save the ncdf (realtime) files
 plot_forecasts = True #Tells whether or not to create the .png files for wofs viewer
+
+nc_outdir = "." #Where to place the final netcdf files #Needed for real time
+#nc_outdir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
+
+#If True, use the ALL naming convention (will be true on cloud) 
+#If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
+use_ALL_files = True
+#use_ALL_files = False
+
+###############################################
 
 #Buffer time for a report in minutes: 
 #i.e., consider reports within this many minutes of the valid period
@@ -106,14 +118,7 @@ real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv'
 reps_coords_dir = "/work/eric.loken/wofs/new_torn/storm_events_reports/fromThea"
 
 
-#If True, use the ALL naming convention (will be true on cloud) 
-#If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
-use_ALL_files = True
-#use_ALL_files = False
-
 wofs_base_path = "/work/mflora/SummaryFiles" #Obviously, will need to change on cloud 
-
-nc_outdir = "." #Where to place the final netcdf files 
 
 max_cores = 30 #max number of cores to use for parallelization
 

@@ -249,11 +249,16 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
 
         png_save_name = "%s_%s%s.png" %(v, start_valid_date_str, start_valid_time_str)
 
+        color_cont_data = data[v]
 
         if ("tornado" in v):
             cont_kwargs_dict = {'levels': orig_levels_tornado, 'extend': extend_var, 'linewidths': orig_linewidths_tornado, \
                         'linestyles': 'solid', 'colors': colors,\
                         'alpha': alpha, 'add_labels': True}
+
+            #Mask out low or zero probabilities
+            color_cont_data[color_cont_data<orig_levels_tornado[0]] = -1.0 
+
 
         else: 
             #Start contouring at 30% instead of 10% if we're trained on LSRs + warnings
@@ -269,6 +274,9 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
                         'linestyles': 'solid', 'colors': colors,\
                         'alpha': alpha, 'add_labels': True}
 
+            #Mask out low probabilities 
+            color_cont_data[color_cont_data < levels[0]] = -1.0
+
         ps_init_time_full_string = "ProbSevere Valid: %s, %s UTC" %(ps_init_time_date_str, ps_init_time_str)
 
         plotter = WoFSPlotter(file_path=nc_fname, \
@@ -279,8 +287,7 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
                                 valid_time = end_valid_dt)
 
         #Mask out low or zero probabilities
-        color_cont_data = data[v]
-        color_cont_data[color_cont_data<0.01] = -1.0 
+        #color_cont_data[color_cont_data<0.01] = -1.0 
         #color_cont_data[color_cont_data < levels[0]] = -1.0
 
         plotter.plot(var_name = v,\
@@ -288,7 +295,7 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
                         add_sharpness=False,\
                         line_cont_kws=cont_kwargs_dict,\
                         color_cont_data=None,\
-                        add_text=True,\
+                        add_text=False,\
                         save_name=png_save_name,
                         second_title=ps_init_time_full_string)
 

@@ -2209,8 +2209,15 @@ class WoFS_Agg:
                 try: 
                     data = open_dataset(full_filename, decode_times=False)
                 except FileNotFoundError:
-                    print ("%s not found. Moving on." %full_filename) 
-                    continue 
+                    try: 
+                        #Try to load the legacy file if the ALL file isn't there 
+                        data = open_dataset(full_legacy_filename, decode_times=False)
+                    except FileNotFoundError:
+
+                        print ("Neither %s nor %s found. Moving on." \
+                                %(full_filename, full_legacy_filename)) 
+
+                        continue 
 
 
             #Extract relevant variable 
@@ -2940,9 +2947,6 @@ class PS:
                 orig_extrap_points = PS.get_extrapolation_points(fcst_specs.ps_lead_time_end,\
                     obj_motion_east, obj_motion_south, c.dx_km, \
                     fcst_specs.adjustable_radii_gridpoint)
-
-                print (orig_extrap_points)
-
 
                 #Now, add the adjustable radii to the set of extrapolation points 
                 extrap_points = PS.add_adjustable_radii(orig_extrap_points, fcst_specs, c.dx_km)
