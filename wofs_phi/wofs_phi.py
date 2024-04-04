@@ -185,20 +185,24 @@ class MLGenerator:
             #Save predictor names to file -- if desired 
             #MLGenerator.save_predictor_names(predictor_list)
 
-            #Extract 1d predictors  
+            #Extract 1d predictors
             one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
                             forecast_specs, fcst_grid)
+            
+            #get 1d torp predictors to append
+            if c.include_torp_in_predictors == True:
+                wofs_lead_time = int((forecast_specs.start_valid_dt - forecast_specs.wofs_init_time_dt).seconds/60)
+                torp_1d_pred_array = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs, wofs_lead_time)
+                one_d_pred_array = np.hstack((one_d_pred_array, torp_1d_pred_array))
 
             #Save predictors to file (if we're training)
             if (c.save_npy == True):
         
-                #torp_predictors = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs)
-
-                #Get the filenames used for saving 
+                #Get the filenames used for saving
                 full_npy_fname = MLGenerator.get_full_npy_filename(forecast_specs)
                 dat_fname = MLGenerator.get_dat_filename(forecast_specs)
                 rand_inds_fname = MLGenerator.get_rand_inds_filename(forecast_specs)
-
+                
                 #Save predictors to appropriate files
                 pex.save_predictors(one_d_pred_array, c.sample_rate, fcst_grid, \
                         c.train_fcst_full_npy_dir, full_npy_fname, c.train_fcst_dat_dir,\
@@ -270,9 +274,15 @@ class MLGenerator:
         '''Sets and returns the filename for the full_npy file (holding the full array of predictors)
             given a ForecastSpecs object (@fSpecs) 
         '''
-
-        use_fname = "wofs1d_%s_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
-                        fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid) 
+        
+        if c.include_torp_in_predictors or (c.ps_version == 3):
+            model_type = c.model_type[5:]
+            use_fname = "wofs1d_%s_%s_%s_%s_v%s-%s.npy" %(model_type, fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                                                       fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
+        elif (not c.include_torp_in_predictors) and (c.ps_version == 2):
+            use_fname = "wofs1d_%s_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                                                       fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
+         
 
         return use_fname
 
@@ -282,9 +292,14 @@ class MLGenerator:
         '''Sets and returns the filename for the dat file (holding the randomly-sampled 
             array of predictors) given a ForecastSpecs object (@fSpecs) 
         '''
-       
-        use_fname = "wofs1d_%s_%s_%s_v%s-%s.dat" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
-                        fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
+        
+        if c.include_torp_in_predictors or (c.ps_version == 3):
+            model_type = c.model_type[5:]
+            use_fname = "wofs1d_%s_%s_%s_%s_v%s-%s.dat" %(model_type, fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                                                          fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
+        elif (not c.include_torp_in_predictors) and (c.ps_version == 2):
+            use_fname = "wofs1d_%s_%s_%s_v%s-%s.dat" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                                                          fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
 
  
         return use_fname
@@ -293,8 +308,13 @@ class MLGenerator:
     @staticmethod 
     def get_rand_inds_filename(fSpecs):
         
-        use_fname = "rand_inds_%s_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
-                        fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
+        if c.include_torp_in_predictors or (c.ps_version == 3):
+            model_type = c.model_type[5:]
+            use_fname = "rand_inds_%s_%s_%s_%s_v%s-%s.npy" %(model_type, fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                                                             fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
+        elif (not c.include_torp_in_predictors) and (c.ps_version == 2):
+            use_fname = "rand_inds_%s_%s_%s_v%s-%s.npy" %(fSpecs.before_00z_date, fSpecs.wofs_init_time,\
+                                                             fSpecs.ps_init_time, fSpecs.start_valid, fSpecs.end_valid)
 
         return use_fname
 
@@ -365,8 +385,7 @@ class MLGenerator:
             sr_map_fname = '%s_%skm_%s-%smin_%s_sr_map.csv' %(train_type, radius, startmin, endmin, hazard)
         return sr_map_fname
 
-#TODO: 
-#Add self.sr_probs
+
 class MLPrediction:
     ''' This class handles the ML prediction'''
 
@@ -1164,7 +1183,7 @@ class ReportGenerator:
             #df=pd.DataFrame(columns=['a'])
             reports_df = pd.DataFrame(columns=header_names)
 
-        return reports_df 
+        return reports_df
 
 
 
@@ -3329,25 +3348,24 @@ class PS:
         east_motion = [] 
         south_motion = []         
 
-        if (ps_version == 2): 
+        #if (ps_version == 2): - appears to be the same for version 3
 
-            if (len(ps_data['features']) > 0):
-                for i in ps_data['features']:
-                    hail_probs.append(float(i['models']['probhail']['PROB'])/100.)
-                    torn_probs.append(float(i['models']['probtor']['PROB'])/100.)
-                    wind_probs.append(float(i['models']['probwind']['PROB'])/100.)
+        if (len(ps_data['features']) > 0):
+            for i in ps_data['features']:
+                hail_probs.append(float(i['models']['probhail']['PROB'])/100.)
+                torn_probs.append(float(i['models']['probtor']['PROB'])/100.)
+                wind_probs.append(float(i['models']['probwind']['PROB'])/100.)
 
-                    east_motion.append(float(i['properties']['MOTION_EAST'])*0.06) #multiply by 0.06 to convert to km/min
-                    south_motion.append(float(i['properties']['MOTION_SOUTH'])*0.06) #multiply by 0.06 to convert to km/min
+                east_motion.append(float(i['properties']['MOTION_EAST'])*0.06) #multiply by 0.06 to convert to km/min
+                south_motion.append(float(i['properties']['MOTION_SOUTH'])*0.06) #multiply by 0.06 to convert to km/min
 
-                    points.append(i['geometry']['coordinates'])
+                points.append(i['geometry']['coordinates'])
 
-                    ids.append(i['properties']['ID'])
-                    ages.append(age) 
+                ids.append(i['properties']['ID'])
+                ages.append(age) 
 
         #TODO: Implement ps version 3 code here
-        elif (ps_version == 3):
-            pass 
+        #elif (ps_version == 3):
 
         #if we're dealing with past PS files: 
         if (isCurrent == False): 
@@ -3783,18 +3801,16 @@ class ForecastSpecs:
             date = split_str[3]
        
         #Now, remove the seconds 
-        time = time[0:4] 
+        time = time[0:4]
     
 
         return time, date
 
 class TORP:
-    
-    def __init__(self, ID, prob, lat, lon, last_update_str, torp_df_row, radar, fcst_specs, wofs_spinup):
+    def __init__(self, ID, prob, lat, lon, last_update_str, torp_df_row, fcst_specs, wofs_spinup):
         self.fcst_duration = fcst_specs.forecast_window
-        lead_time_from_wofs_init = (fcst_specs.start_valid_dt - fcst_specs.wofs_init_time_dt).seconds/60
+        self.lead_time = (fcst_specs.start_valid_dt - fcst_specs.wofs_init_time_dt).seconds/60
         self.wofs_spinup_time = wofs_spinup
-        self.lead_time = (lead_time_from_wofs_init - self.wofs_spinup_time)
         self.predictors = {'prob': prob}
         self.lats = [lat]
         self.lons = [lon]
@@ -3806,10 +3822,10 @@ class TORP:
         self.set_start_valid()
         self.set_time_to_start_valid()
         self.fill_predictors(torp_df_row)
-        self.set_storm_motion()
+        self.set_storm_motion(torp_df_row)
         self.set_future_lats_lons()
         self.update_buffers()
-        self.radar = torp_df_row['Radar']
+        self.radar = torp_df_row['radar']
     
     def __gt__(self, other):
         '''This method overloads the greater than comparison for TORP_List sorting.
@@ -3858,9 +3874,9 @@ class TORP:
         coord_str = 'Location: (' + str(self.lats[0]) + ', ' + str(self.lons[0]) + ')'
         prob_str = 'Prob Tor: ' + str(self.predictors['prob']*100) + '%'
         time_str = 'Detected: ' + str(self.detection_time) + ',\nLast Updated: ' + str(self.last_update)
-        age_str = 'Age: ' + str(self.predictors['age']) + ' minutes'
-        prob_change_1_str = str(c.torp_prob_change_1) + '-Minute Probability Change: ' + str(self.predictors['p_change_' + str(c.torp_prob_change_1) + '_min']*100) + '%'
-        prob_change_2_str = str(c.torp_prob_change_2) + '-Minute Probability Change: ' + str(self.predictors['p_change_' + str(c.torp_prob_change_2) + '_min']*100) + '%'
+        age_str = 'Age: ' + str(self.predictors['torp_age']) + ' minutes'
+        prob_change_1_str = str(c.torp_prob_change_1) + '-Minute Probability Change: ' + str(self.predictors[c.torp_prob_change_1_str]*100) + '%'
+        prob_change_2_str = str(c.torp_prob_change_2) + '-Minute Probability Change: ' + str(self.predictors[c.torp_prob_change_2_str]*100) + '%'
         
         print(id_str)
         print(coord_str)
@@ -3871,34 +3887,43 @@ class TORP:
         print(prob_change_2_str)
         print()
     
-    def set_storm_motion(self):
+    def set_storm_motion(self, torp_df_row):
         '''return storm motion in m/s'''
-        self.storm_motion_north = 20
-        self.storm_motion_east = 10
+        storm_speed = torp_df_row.QC_Spd
+        storm_dir = torp_df_row.QC_Dir
+        unit_circle_angle = 270 - storm_dir
+        
+        self.storm_motion_north = storm_speed*math.sin(math.radians(unit_circle_angle))
+        self.storm_motion_east = storm_speed*math.cos(math.radians(unit_circle_angle))
     
     def set_future_lats_lons(self):
         minutes_to_0 = self.time_to_start_valid
         
         #set start of forecast period
-        x_dist = self.storm_motion_east * ((minutes_to_0 + self.lead_time) * 60)/1000
-        y_dist = self.storm_motion_north * ((minutes_to_0 + self.lead_time) * 60)/1000
+        x_dist = (self.storm_motion_east * ((minutes_to_0 + self.lead_time - self.wofs_spinup_time) * 60))/1000
+        y_dist = (self.storm_motion_north * ((minutes_to_0 + self.lead_time - self.wofs_spinup_time) * 60))/1000
         
         self.lons.append(utilities.haversine_get_lon(self.lats[0], self.lons[0], x_dist))
-        self.lats.append(utilities.haversine_get_lat(self.lats[0], self.lons[0], self.lons[1], y_dist))
+        avg_lon = (self.lons[0] + self.lons[1])/2
+        self.lats.append(utilities.haversine_get_lat(self.lats[0], avg_lon, y_dist))
         self.Points.append(Point(self.lons[1], self.lats[1]))
         
         #set end of forecast period
-        x_dist = self.storm_motion_east * (self.forecast_duration * 60)/1000
-        y_dist = self.storm_motion_north * (self.forecast_duration * 60)/1000
+        x_dist = self.storm_motion_east * (self.fcst_duration * 60)/1000
+        y_dist = self.storm_motion_north * (self.fcst_duration * 60)/1000
         
         self.lons.append(utilities.haversine_get_lon(self.lats[1], self.lons[1], x_dist))
-        self.lats.append(utilities.haversine_get_lat(self.lats[1], self.lons[1], self.lons[2], y_dist))
+        avg_lon = (self.lons[1] + self.lons[2])/2
+        self.lats.append(utilities.haversine_get_lat(self.lats[1], avg_lon, y_dist))
         self.Points.append(Point(self.lons[2], self.lats[2]))
     
     def fill_predictors(self, row):
         for predictor in c.torp_predictors:
             try:
-                self.predictors[predictor] = row[predictor]
+                if predictor == 'torp_prob':
+                    self.predictors[predictor] = row['probability']
+                else:
+                    self.predictors[predictor] = row[predictor]
             except:
                 if predictor == 'RangeInterval':
                     self.predictors[predictor] = row['rng_int']
@@ -4044,7 +4069,8 @@ class TORP:
             east_motion = (self.storm_motion_east * td_sec)/1000
             
             extrap_lon = utilities.haversine_get_lon(self.lats[0], self.lons[0], east_motion)
-            extrap_lat = utilities.haversine_get_lat(self.lats[0], self.lons[0], extrap_lon, north_motion)
+            avg_lon = (self.lons[0] + extrap_lon)/2
+            extrap_lat = utilities.haversine_get_lat(self.lats[0], avg_lon, north_motion)
             
             dist = utilities.haversine(extrap_lat, extrap_lon, back.lats[0], back.lons[0])
             
@@ -4069,6 +4095,39 @@ class TORP:
         min_dist_index = np.where(eligible_tl_dists == np.min(eligible_tl_dists))[0][0]
         
         return eligible_tls[min_dist_index]
+    
+    @staticmethod
+    def get_torp_files(wofs_file):
+        date_str = wofs_file.split('_')[3]
+        time_str = wofs_file.split('_')[4]
+        init = utilities.make_dt_from_str(date_str, time_str)
+        torp_files = []
+        most_recent_possible = init + dt.timedelta(seconds = c.wofs_spinup_time*60)
+        earliest_possible = most_recent_possible - dt.timedelta(hours = 3)
+        
+        start_dir = '%s/%s' %(c.raw_torp_training_path, dt.datetime.strftime(earliest_possible, '%Y%m%d'))
+        for torp_csv in os.listdir(start_dir):
+            date_time = utilities.parse_date(torp_csv.split('_')[0])
+            if (date_time >= earliest_possible) and (date_time <= most_recent_possible):
+                torp_files.append('%s/%s' %(start_dir, torp_csv))
+        
+        end_dir = '%s/%s' %(c.raw_torp_training_path, dt.datetime.strftime(most_recent_possible, '%Y%m%d'))
+        if end_dir == start_dir:
+            return torp_files
+        
+        for torp_csv in os.listdir(end_dir):
+            date_time = utilities.parse_date(torp_csv.split('_')[0])
+            if (date_time >= earliest_possible) and (date_time <= most_recent_possible):
+                torp_files.append('%s/%s' %(end_dir, torp_csv))
+        
+        return torp_files
+    
+    @staticmethod
+    def get_empty_torp_npy():
+        rows = MLTrainer.GRID_SHAPE_X*MLTrainer.GRID_SHAPE_Y
+        npy = np.zeros((rows, c.num_torp_vars))
+        npy[:,1] = -1
+        return npy
 
 class TORP_List:
     
@@ -4113,19 +4172,19 @@ class TORP_List:
         
         front = self.array[0]
         back = self.array[-1]
-        front.predictors['age'] = round(((front.last_update - front.detection_time).seconds)/60, 2)
+        front.predictors['torp_age'] = round(((front.last_update - front.detection_time).seconds)/60, 2)
         
-        if (front.predictors['age'] < c.torp_prob_change_2) or (len(self.array) == 1):
-            front.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = front.predictors['prob']
+        if (front.predictors['torp_age'] < c.torp_prob_change_2) or (len(self.array) == 1):
+            front.predictors[c.torp_prob_change_2_str] = front.predictors['prob']
         else:
             closeTorp = self.find_temporal_closest(c.torp_prob_change_2)
-            front.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = round(front.predictors['prob'] - closeTorp.predictors['prob'], 6)
+            front.predictors[c.torp_prob_change_2_str] = round(front.predictors['prob'] - closeTorp.predictors['prob'], 6)
         
-        if front.predictors['age'] < c.torp_prob_change_1 or (len(self.array) == 1):
-            front.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = front.predictors['prob']
+        if front.predictors['torp_age'] < c.torp_prob_change_1 or (len(self.array) == 1):
+            front.predictors[c.torp_prob_change_1_str] = front.predictors['prob']
         else:
             closeTorp = self.find_temporal_closest(c.torp_prob_change_1)
-            front.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = round(front.predictors['prob'] - closeTorp.predictors['prob'], 6)
+            front.predictors[c.torp_prob_change_1_str] = round(front.predictors['prob'] - closeTorp.predictors['prob'], 6)
         
         front.update_buffers()
         
@@ -4140,19 +4199,19 @@ class TORP_List:
     def update_i(self, i):
         '''update a specific index of the array'''
         torp = self.array[i]
-        torp.predictors['age'] = round(((torp.last_update - torp.detection_time).seconds)/60, 2)
+        torp.predictors['torp_age'] = round(((torp.last_update - torp.detection_time).seconds)/60, 2)
         
-        if (torp.predictors['age'] < c.torp_prob_change_2) or (len(self.array) == 1):
-            torp.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = torp.predictors['prob']
+        if (torp.predictors['torp_age'] < c.torp_prob_change_2) or (len(self.array) == 1):
+            torp.predictors[c.torp_prob_change_2_str] = torp.predictors['prob']
         else:
             closeTorp = self.find_temporal_closest(c.torp_prob_change_2, i)
-            torp.predictors['p_change_' + str(c.torp_prob_change_2) + '_min'] = round(torp.predictors['prob'] - closeTorp.predictors['prob'], 6)
+            torp.predictors[c.torp_prob_change_2_str] = round(torp.predictors['prob'] - closeTorp.predictors['prob'], 6)
         
-        if torp.predictors['age'] < c.torp_prob_change_1 or (len(self.array) == 1):
-            torp.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = torp.predictors['prob']
+        if torp.predictors['torp_age'] < c.torp_prob_change_1 or (len(self.array) == 1):
+            torp.predictors[c.torp_prob_change_1_str] = torp.predictors['prob']
         else:
             closeTorp = self.find_temporal_closest(c.torp_prob_change_1, i)
-            torp.predictors['p_change_' + str(c.torp_prob_change_1) + '_min'] = round(torp.predictors['prob'] - closeTorp.predictors['prob'], 6)
+            torp.predictors[c.torp_prob_change_1_str] = round(torp.predictors['prob'] - closeTorp.predictors['prob'], 6)
         
         torp.update_buffers()
             
@@ -4215,7 +4274,7 @@ class TORP_List:
         return torp_dict
     
     @staticmethod
-    def gen_torp_dict_from_file(path, grid, fcst_specs, lead_time, td = None, cutoff = None):
+    def gen_torp_dict_from_file(path, grid, fcst_specs, wofs_spinup, td = None, cutoff = None):
         '''Given a torp csv file from a radar, this function will create
         TORP objects and add them to a dictionary of TORP lists. Each list
         will be full of TORP objects with the same long id but different
@@ -4232,10 +4291,10 @@ class TORP_List:
             torp_dict = copy.deepcopy(td)
         
         torp_df = pd.read_csv(path)
-        IDs = torp_df.ID_date
-        probs = torp_df.Probability
-        lats = torp_df.Lat
-        lons = torp_df.Lon
+        IDs = torp_df.id_date
+        probs = torp_df.probability
+        lats = torp_df.QC_Lat
+        lons = torp_df.QC_Lon
         
         file = path.split('/')[-1]
         last_update = file.split('_')[0]
@@ -4244,8 +4303,7 @@ class TORP_List:
             if not isinstance(IDs[0], str):
                 continue
             #create the TORP object
-            
-            torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update, torp_df.iloc[i], torp_df, fcst_specs, lead_time)
+            torp = TORP(IDs[i], probs[i], lats[i], lons[i], last_update, torp_df.iloc[i], fcst_specs, wofs_spinup)
             #if it's out of bounds for the wofs grid of the day, then ignore it
             if not torp.check_bounds(grid):
                 continue
@@ -4297,9 +4355,9 @@ class TORP_List:
             
             for i, path in enumerate(paths):
                 if i == 0:
-                    torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, cutoff=cutoff)
+                    torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, c.wofs_spinup_time, cutoff=cutoff)
                 else:
-                    torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, cutoff=cutoff, torp_dict=torp_dict)
+                    torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, c.wofs_spinup_time, td = torp_dict, cutoff=cutoff)
             
             return torp_dict
         
@@ -4308,9 +4366,9 @@ class TORP_List:
         #if not training mode, then don't need to deal with calculating cutoff point
         for i, path in enumerate(paths):
             if i == 0:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, wofs_spinup)
             else:
-                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, torp_dict)
+                torp_dict = TORP_List.gen_torp_dict_from_file(path, grid, fcst_specs, torp_dict, wofs_spinup)
         
         return torp_dict
     
@@ -4323,15 +4381,15 @@ class TORP_List:
         After extrapolation is implemented, this will need to be updated to specify
         the lead time at which the resulting wofs points and torp_ids are valid.'''
         
-        delta_t_min = (fcst_specs.start_valid_dt - fcst_specs.wofs_init_time_dt).seconds/60
-        lead_index = ((delta_t_min - lead_time)/fcst_specs.forecast_window) + 1
+        #delta_t_min = (fcst_specs.start_valid_dt - fcst_specs.wofs_init_time_dt).seconds/60
+        #lead_index = ((delta_t_min - lead_time)/fcst_specs.forecast_window) + 1
         
         i = 0
         gdf = None
         for long_id in torp_dict:
             l = torp_dict[long_id]
             t = l.array[0]
-            if not (t.start_valid == fcst_specs.wofs_init_time_dt + dt.timedelta(seconds = lead_time*60)):
+            if not (t.start_valid == fcst_specs.wofs_init_time_dt + dt.timedelta(seconds = c.wofs_spinup_time*60)):
                 continue
             if i == 0:
                 gdf = t.get_wofs_overlap_points(wofs_gdf, torp_dict)
@@ -4362,7 +4420,7 @@ class TORP_List:
         npy_predictors_dict = {}
         for predictor in predictors:
             npy_predictors_dict[predictor] = np.zeros((300, 300))
-            if predictor in ['age', 'RangeInterval']:
+            if predictor in ['torp_age']:
                 npy_predictors_dict[predictor] -= 1
         
         if  isinstance(gdf, pd.DataFrame):
@@ -4378,10 +4436,20 @@ class TORP_List:
             torp_predictors = torp_dict[gdf.torp_id.values[m]].array[0].predictors
             for predictor in npy_predictors_dict:
                 array = npy_predictors_dict[predictor]
-                array[i, j] = torp_predictors[predictor]
+                pred = torp_predictors[predictor]
+                if pred == '+':
+                    array[i,j] = 1
+                elif pred == '-':
+                    array[i,j] = -1
+                elif pred == '=':
+                    array[i,j] = 0
+                else:
+                    array[i, j] = pred
                 npy_predictors_dict[predictor] = array
         
-        if not os.path.isfile(txt_file):  
+        write = False
+        if not os.path.isfile(txt_file):
+            write = True
             f = open(txt_file, "w")
         
         for i, predictor in enumerate(predictors):
@@ -4422,13 +4490,13 @@ class TORP_List:
                     full_npy = np.append(full_npy, array_1d_45km, axis = 1)
                     full_npy = np.append(full_npy, array_1d_60km, axis = 1)
             
-            if not os.path.isfile(txt_file):
+            if write:
                 f.write(predictor + '\n')
                 f.write(predictor + '_' + var_method + '_15km' + '\n')
                 f.write(predictor + '_' + var_method + '_30km' + '\n')
                 f.write(predictor + '_' + var_method + '_45km' + '\n')
                 f.write(predictor + '_' + var_method + '_60km' + '\n')
-        if not os.path.isfile(txt_file):    
+        if write:    
             f.close()
         return full_npy
     
@@ -4436,9 +4504,12 @@ class TORP_List:
     def gen_torp_npy(torp_files, wofs_grid, fcst_specs, lead_time):
         
         wofs_gdf = PS.get_wofs_gdf(wofs_grid)
-        td = TORP_List.gen_full_dict_from_file_list(torp_files, wofs_grid, fcst_specs)
-        gdf = TORP_List.gen_wofs_points_gdf(td, fcst_specs, wofs_gdf, lead_time)
-        npy = TORP_List.overlap_gdf_to_npy(gdf, td, c.torp_vars_filename)
+        if len(torp_files) == 0:
+            npy = TORP.get_empty_torp_npy()
+        else:
+            td = TORP_List.gen_full_dict_from_file_list(torp_files, wofs_grid, fcst_specs)
+            gdf = TORP_List.gen_wofs_points_gdf(td, fcst_specs, wofs_gdf, lead_time)
+            npy = TORP_List.overlap_gdf_to_npy(gdf, td, c.torp_vars_filename)
         
         return npy
 
@@ -4493,32 +4564,8 @@ def main():
 
 
     ps_files = ["MRMS_EXP_PROBSEVERE_%s.%s.json" %(ps_dates[p], ps_times[p]) for p in range(len(ps_times))]
-   
- 
-    torp_files = ['/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-023037_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-023337_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-023628_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-023928_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-024219_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-024519_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-024808_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-025102_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-025350_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-025644_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-025931_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-030225_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-030512_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-030812_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-031103_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-031356_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-031643_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-031937_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-032238_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-032532_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-032804_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033013_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033234_KUDX_tordetections.csv',
-                  '/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp/20210605/20210605-033456_KUDX_tordetections.csv']
+    
+    
 
     ml_obj = MLGenerator(wofs_files2, ps_files, ps_direc, wofs_direc, torp_files, c.nc_outdir,\
                             mode, train_type)
