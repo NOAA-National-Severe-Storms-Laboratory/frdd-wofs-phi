@@ -2,13 +2,11 @@
 # Script that will drive the ML training and testing
 #===================================================
 
-from wofs_phi import * 
-import config as c
+from .wofs_phi import * 
+from . import config as c
 import os.path
 from itertools import compress
 import warnings
-
-
 
 #Could also call this, e.g., FileObtainer or something. 
 class MLDriver:
@@ -521,7 +519,7 @@ def create_forecast_mode_training(train_types):
 
     window = 60 #Focus on 60 minute windows 
     
-    date_file = "probSevere_dates.txt"
+    date_file = (c.base_path/"probSevere_dates.txt")
     #date_file = "first_obs_dates.txt" 
 
     dates = read_txt(date_file) 
@@ -531,13 +529,17 @@ def create_forecast_mode_training(train_types):
     report_radius = 39 #Only really used to check if reports file 
                         #already exists 
 
-    training_init_times = ["1700", "1730", "1800", "1830", "1900",\
-        "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
-        "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
+    #training_init_times = ["1700", "1730", "1800", "1830", "1900",\
+    #    "1930", "2000", "2030", "2100", "2130", "2200", "2230", \
+    #    "2300", "2330", "0000", "0030", "0100", "0130", "0200"]
+    training_init_times = ["1700", "1800", "1900",\
+        "2000", "2100", "2200", \
+        "2300", "0000", "0100", "0200"]
+
 
     #dates = dates[37:]
-    #training_init_times = ["1700"] 
-    #dates = ["20210604"] 
+    #training_init_times = ["2300"] 
+    #dates = ["20190506"] 
     #training_init_times = ["2200", "2300", "0000"]
     #training_init_times = ["2300"] 
     #dates = ["20190501"] 
@@ -566,6 +568,9 @@ def create_forecast_mode_training(train_types):
     #lead_times = [90, 120] 
     #lead_times = [30] 
 
+    #lead_times = [60, 90, 120]
+    #lead_times = [150, 180]
+    
     lead_times = [30, 60, 90, 120]
 
     #Get the data
@@ -621,7 +626,7 @@ def create_warning_mode_training(train_types):
     mode = "warning" 
 
     window = 60 #Focus on 60 minute windows 
-    date_file = "probSevere_dates.txt"
+    date_file = (c.base_path/"probSevere_dates.txt")
     dates = read_txt(date_file)
     report_radius = 39 #in km 
 

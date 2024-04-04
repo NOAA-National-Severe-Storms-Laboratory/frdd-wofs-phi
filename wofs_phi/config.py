@@ -5,6 +5,8 @@
 # run wofs_phi.py 
 #==================================
 
+import os
+import pathlib
 
 #TODO: It's possible the below won't be needed--Not sure yet. 
 #Options are: 
@@ -19,8 +21,10 @@
 #NOTE: Not used, except in Ryan's code (with TORP stuff) 
 is_train_mode = True
 
+base_path = pathlib.Path(__file__).parent.resolve()
+
 train_mode = 'train'
-train_type = 'obs_and_warnings'
+train_type = 'obs_and_warnings' #NOTE: Probably no longer needed, or change to train_types
 train_radii = ['7.5', '15', '30', '39']
 train_hazards = ['hail', 'wind', 'tornado']
 train_lead_times = [90, 120]
@@ -68,12 +72,24 @@ ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
 #netcdf files 
 png_outdir = ""
 
+######## Main things to change on cloud#######
+
 #May or may not eventually use these
 generate_forecasts = True #Generates the predictors array if True
 generate_reports = False #Generates the reports file if True 
 save_npy = True #Tells whether or not to save the npy predictor files 
 save_ncdf = False #Tells whether or not to create/save the ncdf (realtime) files
 plot_forecasts = True #Tells whether or not to create the .png files for wofs viewer
+
+nc_outdir = "." #Where to place the final netcdf files #Needed for real time
+#nc_outdir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
+
+#If True, use the ALL naming convention (will be true on cloud) 
+#If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
+use_ALL_files = True
+#use_ALL_files = False
+
+###############################################
 
 #Buffer time for a report in minutes: 
 #i.e., consider reports within this many minutes of the valid period
@@ -117,20 +133,20 @@ real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv'
 reps_coords_dir = "/work/eric.loken/wofs/new_torn/storm_events_reports/fromThea"
 
 
+
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
 use_ALL_files = False
 
 wofs_base_path = "/work/mflora/SummaryFiles" #Obviously, will need to change on cloud
 
-nc_outdir = "." #Where to place the final netcdf files 
-
 max_cores = 30 #max number of cores to use for parallelization
 
 dx_km = 3.0 #horizontal grid spacing of wofs in km 
 ps_thresh = 0.01 #ps objects must have probs greater than or equal to this amount to be considered
 
-max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
+#max_ps_extrap_time = 181.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
+max_ps_extrap_time = 241.0 #Maximum amount of PS extrapolation time (used for setting min and max radius) 
 
 #Amount of time (in minutes) to go back (relative to first PS file) 
 ps_time_to_go_back = 180.0
@@ -170,11 +186,11 @@ final_str_obs_radii = ["39"] #form to use for final ncdf files
 
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
-wofs_fields_file = "standard_wofs_variables.txt"
-wofs_methods_file = "standard_wofs_methods.txt"
+wofs_fields_file = (base_path / "standard_wofs_variables.txt")
+wofs_methods_file = (base_path / "standard_wofs_methods.txt")
 
-all_fields_file = "all_fields.txt" #Holds all the predictor fields
-all_methods_file = "all_methods.txt" #Holds all the preprocessing methods
+all_fields_file = (base_path / "all_fields.txt") #Holds all the predictor fields
+all_methods_file = (base_path / "all_methods.txt") #Holds all the preprocessing methods
 
 wofs_dir = "/work/mflora/SummaryFiles/"
 if ps_version == 2:
@@ -186,7 +202,7 @@ ps_search_minutes = 180 #how long before start time do we need to search for ps 
 ps_recent_file_threshold = 10 #need a file in last __ minutes to do training/real time running
 
 #Holds all the variables that just get taken from the point of prediction
-single_pt_file = "single_point_fields.txt" 
+single_pt_file = (base_path / "single_point_fields.txt")
 
 
 bottom_hour_inits = ["1730", "1830", "1930", "2030", "2130", "2230", "2330", "0030", "0130",\
@@ -252,6 +268,11 @@ torp_search_minutes = max(torp_prob_change_1, torp_prob_change_2)
 torp_max_time_skip = 10
 
 torp_conv_dists = [15, 30, 45, 60]
+
+### If this environment variable is set, then it likely running in the cloud
+if 'WOFS_ML_PATH' in os.environ:
+    real_time_sr_map_dir = os.environ['WOFS_ML_PATH']
+    rf_dir = os.environ['WOFS_ML_PATH']
 
 torp_max_convs = ["torp_prob","torp_age",torp_prob_change_1_str,torp_prob_change_2_str,'azshear_max', 'azshear_max_trend', 'divshear_min',
        'divshear_min_trend', 'reflectivity_max', 'spectrumwidth_max',
