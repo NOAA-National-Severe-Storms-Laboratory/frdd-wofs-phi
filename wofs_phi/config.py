@@ -32,7 +32,7 @@ forecast_length = 60
 num_folds = 5
 wofs_spinup_time = 25
 
-ps_version = 3 #i.e., which probSevere version is being used 2 for v2, 3 for v3
+ps_version = 2 #i.e., which probSevere version is being used 2 for v2, 3 for v3
 include_torp_in_predictors = False
 
 if (ps_version == 2) and (not include_torp_in_predictors):
@@ -42,7 +42,7 @@ elif (ps_version == 2) and (include_torp_in_predictors):
 elif (ps_version == 3) and (not include_torp_in_predictors):
     model_type = 'wofs_psv3_no_torp'
 elif (ps_version == 3) and (include_torp_in_predictors):
-    model_type = 'wofs_psv3_with_torp
+    model_type = 'wofs_psv3_with_torp'
 
 plot_in_training = True
 
@@ -77,8 +77,8 @@ png_outdir = ""
 #May or may not eventually use these
 generate_forecasts = True #Generates the predictors array if True
 generate_reports = False #Generates the reports file if True 
-save_npy = True #Tells whether or not to save the npy predictor files 
-save_ncdf = False #Tells whether or not to create/save the ncdf (realtime) files
+save_npy = False #Tells whether or not to save the npy predictor files 
+save_ncdf = True #Tells whether or not to create/save the ncdf (realtime) files
 plot_forecasts = True #Tells whether or not to create the .png files for wofs viewer
 
 nc_outdir = "." #Where to place the final netcdf files #Needed for real time

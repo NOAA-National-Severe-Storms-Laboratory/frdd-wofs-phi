@@ -601,8 +601,8 @@ def create_forecast_mode_training(train_types):
 
 
                 #Note: Can also check to make sure we don't already have a npy file 
-                if (proceed_wofs == True and proceed_ps == True and already_done == False):
-                #if (proceed_wofs == True and proceed_ps == True):
+                #if (proceed_wofs == True and proceed_ps == True and already_done == False):
+                if (proceed_wofs == True and proceed_ps == True):
 
                     ml.generate()
 
