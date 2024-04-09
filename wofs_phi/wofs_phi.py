@@ -601,12 +601,12 @@ class MLPrediction:
 
         if (mode_str == "warning"):
 
-            pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window30-90_r%skm_fold0.pkl"\
+            pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window30-90_r%skm.pkl"\
                         %(c.rf_dir, train_string, haz_name, specs_obj.forecast_window, radius)
 
         else: 
 
-            pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window%s-%s_r%skm_fold0.pkl"\
+            pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window%s-%s_r%skm.pkl"\
                         %(c.rf_dir, train_string, haz_name, specs_obj.forecast_window, start_init,\
                         end_init, radius)
 
@@ -2440,7 +2440,6 @@ class Grid:
                 except:
                     print ("Neither %s nor %s found" %(full_wofs_file, full_legacy_wofs_file))
                     quit()
-
 
         else: 
 

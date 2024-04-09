@@ -538,8 +538,8 @@ def create_forecast_mode_training(train_types):
 
 
     #dates = dates[37:]
-    #training_init_times = ["2300"] 
-    #dates = ["20190506"] 
+    training_init_times = ["2300"] 
+    dates = ["20190506"] 
     #training_init_times = ["2200", "2300", "0000"]
     #training_init_times = ["2300"] 
     #dates = ["20190501"] 
@@ -570,8 +570,8 @@ def create_forecast_mode_training(train_types):
 
     #lead_times = [60, 90, 120]
     #lead_times = [150, 180]
-    
-    lead_times = [30, 60, 90, 120]
+
+    lead_times = [30, 60, 90, 120, 150, 180] 
 
     #Get the data
     for lead_time in lead_times:
@@ -669,7 +669,7 @@ def create_warning_mode_training(train_types):
             #Now, start MLDriver object 
             mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir,\
                     mode)
-    
+
             #Use this to drive the forecast 
             ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
                         mld.wofs_path, mld.torp_files, c.nc_outdir, mode, train_types)
