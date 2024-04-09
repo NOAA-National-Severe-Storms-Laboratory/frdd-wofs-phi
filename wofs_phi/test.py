@@ -1,6 +1,7 @@
-import numpy as np
-import math
+import os 
+import pathlib
 
-print (math.ceil(5/2))
+base_path = pathlib.Path(__file__).parent.resolve()
 
+print (base_path) 
 

@@ -5,7 +5,8 @@
 from .wofs_phi import * 
 from . import config as c
 import os.path
-from itertools import compress 
+from itertools import compress
+import warnings
 
 #Could also call this, e.g., FileObtainer or something. 
 class MLDriver:
@@ -14,7 +15,7 @@ class MLDriver:
     '''
 
     def __init__(self, pre00z_date, time_window, wofs_init, wofs_lead_time,\
-                    wofs_path, ps_path, wofs_files, ps_files, ps_init):
+                    wofs_path, ps_path, wofs_files, ps_files, torp_files, ps_init):
         ''' @pre00z_date is the date for the case before 00z (string format 
                 YYYYMMDD) 
             @time_window is the forecast time window in minutes
@@ -29,6 +30,7 @@ class MLDriver:
                 valid period 
             @ps_files is the list of probSevere files (starting with the most 
                 recent and going back 3 hours in time)
+            @torp_files is the list of torp files (all within last 3 hours - unorganized)
             @ps_init is the ProbSevere intiailization time 
         '''
 
@@ -39,7 +41,8 @@ class MLDriver:
         self.wofs_path = wofs_path
         self.ps_path = ps_path
         self.wofs_files = wofs_files
-        self.ps_files = ps_files 
+        self.ps_files = ps_files
+        self.torp_files = torp_files
         self.ps_init = ps_init
 
         return 
@@ -67,13 +70,16 @@ class MLDriver:
 
         #Find ps files 
         ps_file_list = MLDriver.find_ps_files_from_first_wofs(wofs_file_list[0], current_mode)
+        
+        #Find torp files
+        torp_file_list = TORP.get_torp_files(wofs_file_list[0])
 
         #Find the ps init time 
         ps_iTime, __ = ForecastSpecs.find_ps_date_time(ps_file_list[0], c.ps_version) 
 
         #Create MLDriver object
         obj = MLDriver(before00zDate, timeWindow, wofsInitTime, wofsLeadTime, wofsPath,\
-                c.ps_dir, wofs_file_list, ps_file_list, ps_iTime) 
+                c.ps_dir, wofs_file_list, ps_file_list, torp_file_list, ps_iTime) 
 
 
         return obj
@@ -239,7 +245,7 @@ class MLDriver:
         #Get the list of probSevere datetime files
         ps_dt_list = MLDriver.get_ps_datetimes(first_ps_dt) 
         
-        ps_filenames = MLDriver.get_ps_names_from_dt_list(ps_dt_list) 
+        ps_filenames = MLDriver.get_ps_names_from_dt_list(ps_dt_list)
 
 
         return ps_filenames
@@ -249,28 +255,26 @@ class MLDriver:
     def get_ps_names_from_dt_list(dt_list):
         '''Returns a list of probSevere filenames from datetime list'''
 
-        ps_names = [] 
+        ps_names = []
 
         for l in range(len(dt_list)):
-            dt = dt_list[l] 
+            dt = dt_list[l]
+            
+            #get date and time from datetime object
+            date_str, time_str = ForecastSpecs.dattime_to_str(dt)
             
             if (c.ps_version == 2):
-                #get date and time from datetime object
-                date_str, time_str = ForecastSpecs.dattime_to_str(dt)
                 
                 #TODO: Might need to add capability to check for each second
                 #for real-time. Might also not be a problem in real time. 
                 ps_name = "MRMS_EXP_PROBSEVERE_%s.%s00.json" %(date_str, time_str)
                 
-            
-                
-            #TODO: Need to implement capabilities for version 3 
+            #TODO: Need to implement capabilities for version 3
             elif (c.ps_version == 3):
+                year = date[0:4]
+                ps_name = "%s/SSEC_AWIPS_PROBSEVERE-V3_%s_%s00.json" %(year, date_str, time_str)
 
-                pass    
-    
-
-            ps_names.append(ps_name) 
+            ps_names.append(ps_name)
 
 
 
@@ -534,8 +538,8 @@ def create_forecast_mode_training(train_types):
 
 
     #dates = dates[37:]
-    #training_init_times = ["2300"] 
-    #dates = ["20190506"] 
+    training_init_times = ["2300"] 
+    dates = ["20190506"] 
     #training_init_times = ["2200", "2300", "0000"]
     #training_init_times = ["2300"] 
     #dates = ["20190501"] 
@@ -565,19 +569,21 @@ def create_forecast_mode_training(train_types):
     #lead_times = [30] 
 
     #lead_times = [60, 90, 120]
-    lead_times = [150, 180]
+    #lead_times = [150, 180]
+
+    lead_times = [30, 60, 90, 120, 150, 180] 
 
     #Get the data
     for lead_time in lead_times:
         for date in dates:
             for init_time in training_init_times:
-                print (date, init_time, lead_time) 
+                print (date, init_time, lead_time)
                 mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir,\
                                     mode)
 
                 #Use this to drive the forecast 
                 ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
-                        mld.wofs_path, torpFiles, c.nc_outdir, mode, train_types)
+                        mld.wofs_path, mld.torp_files, c.nc_outdir, mode, train_types)
 
                 #Check to make sure wofs files exist; if so we can generate. 
                 proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0]) 
@@ -595,7 +601,6 @@ def create_forecast_mode_training(train_types):
 
 
                 #Note: Can also check to make sure we don't already have a npy file 
-                #if (proceed_wofs == True and proceed_ps == True and already_done == False):
                 #if (proceed_wofs == True and proceed_ps == True and already_done == False):
                 if (proceed_wofs == True and proceed_ps == True):
 
@@ -623,7 +628,6 @@ def create_warning_mode_training(train_types):
     window = 60 #Focus on 60 minute windows 
     date_file = (c.base_path/"probSevere_dates.txt")
     dates = read_txt(date_file)
-    torpFiles = []
     report_radius = 39 #in km 
 
 
@@ -665,12 +669,12 @@ def create_warning_mode_training(train_types):
             #Now, start MLDriver object 
             mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir,\
                     mode)
-    
+
             #Use this to drive the forecast 
             ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
-                        mld.wofs_path, torpFiles, c.nc_outdir, mode, train_types)
+                        mld.wofs_path, mld.torp_files, c.nc_outdir, mode, train_types)
 
-            #Check to make sure wofs files exist; if so we can generate. 
+            #Check to make sure wofs files exist; if so we can generate.
             proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0])
 
             proceed_ps = does_ps_exist(mld.ps_path, mld.ps_files[0]) 
@@ -715,9 +719,14 @@ def does_full_npy_exist(date_before_00z, wofs_initTime, ps_initTime,\
     start_valid, __ = ForecastSpecs.find_date_time_from_wofs(first_wofs_file, "forecast")
 
     end_valid, __ = ForecastSpecs.find_date_time_from_wofs(last_wofs_file, "forecast") 
-
-    filename = "%s/wofs1d_%s_%s_%s_v%s-%s.npy" %(npy_path, date_before_00z, wofs_initTime, \
-                ps_initTime, start_valid, end_valid)
+    
+    if c.include_torp_in_predictors or (c.ps_version == 3):
+        model_type = c.model_type[5:]
+        filename = "%s/wofs1d_%s_%s_%s_%s_v%s-%s.npy" %(npy_path, model_type, date_before_00z, wofs_initTime, \
+                    ps_initTime, start_valid, end_valid)
+    elif (not c.include_torp_in_predictors) and (c.ps_version == 2):
+        filename = "%s/wofs1d_%s_%s_%s_v%s-%s.npy" %(npy_path, date_before_00z, wofs_initTime, \
+                    ps_initTime, start_valid, end_valid)
     
     if (os.path.isfile(filename)):
         exists = True 
@@ -795,10 +804,12 @@ def read_txt(txt_file):
 
 def main():
     '''Main method'''
-
+    
+    warnings.filterwarnings('ignore')
+    
     #SET mode here 
-    #mode_to_generate = "forecast"
-    mode_to_generate = "warning"
+    mode_to_generate = "forecast"
+    #mode_to_generate = "warning"
 
     #SET train type here 
     #options: "obs", "warnings", or "obs_and_warnings"

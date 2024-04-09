@@ -97,7 +97,7 @@ def haversine_get_lon(lat, lon, x_dist):
     
     return lon + (new_lon * (abs(x_dist)/x_dist))
 
-def haversine_get_lat(lat1, lon1, lon2, y_dist):
+def haversine_get_lat(lat1, avg_lon, y_dist):
     '''Gets a latitude given a point and meridional distance (in km)'''
     
     upper_bound = 90
@@ -105,7 +105,7 @@ def haversine_get_lat(lat1, lon1, lon2, y_dist):
     
     lat2 = (upper_bound + lower_bound)/2
     
-    dist = abs(haversine(lat1, lon1, lat2, lon2))
+    dist = abs(haversine(lat1, avg_lon, lat2, avg_lon))
     if lat2 < lat1:
         dist = -dist
     
@@ -116,7 +116,7 @@ def haversine_get_lat(lat1, lon1, lon2, y_dist):
             lower_bound = lat2
         
         lat2 = (upper_bound + lower_bound)/2
-        dist = abs(haversine(lat1, lon1, lat2, lon2))
+        dist = abs(haversine(lat1, avg_lon, lat2, avg_lon))
         if lat2 < lat1:
             dist = -dist
         

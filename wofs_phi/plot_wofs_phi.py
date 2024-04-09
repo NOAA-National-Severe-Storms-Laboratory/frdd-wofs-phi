@@ -141,7 +141,7 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
         #else: 
         #    color_cont_data[color_cont_data < levels[0]] = -1.0
         
-        ps_init_time_full_string = "ProbSevere Valid: %s, %s UTC" %(ps_init_time_date_str, ps_init_time_str)
+        ps_init_time_full_string = "ProbSevere Init: %s, %s UTC" %(ps_init_time_date_str, ps_init_time_str)
 
         plotter.plot(var_name=v, \
                         color_cont_data=color_cont_data,\
@@ -199,8 +199,11 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
     orig_levels = np.array([0.1, 0.3, 0.5, 0.7, 0.9]) 
 
     #TODO: Might have to make different contours for tornadoes
-    orig_levels_tornado = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35,\
-                                0.4, 0.45, 0.5]) 
+    #orig_levels_tornado = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35,\
+    #                            0.4, 0.45, 0.5]) 
+
+    orig_levels_tornado = np.array([0.05, 0.1, 0.2, 0.3, 0.4, 0.5]) 
+
     #levels_tornado = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35,\
     #                    0.40, 0.45, 0.5]) 
 
@@ -236,6 +239,7 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
     __, ps_init_time_str = dattime_to_str(ps_init_dt)
 
     start_valid_date_str, start_valid_time_str = dattime_to_str(start_valid_dt) 
+    end_valid_date_str, end_valid_time_str = dattime_to_str(end_valid_dt) 
 
     ps_init_time_date_str = ps_init_dt.strftime("%Y-%m-%d")
 
@@ -277,7 +281,9 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
             #Mask out low probabilities 
             color_cont_data[color_cont_data < levels[0]] = -1.0
 
-        ps_init_time_full_string = "ProbSevere Valid: %s, %s UTC" %(ps_init_time_date_str, ps_init_time_str)
+        ps_init_time_full_string = "ProbSevere Init: %s, %s UTC, Valid: %s - %s UTC" \
+                %(ps_init_time_date_str, ps_init_time_str, start_valid_time_str, \
+                    end_valid_time_str)
 
         plotter = WoFSPlotter(file_path=nc_fname, \
                                 outdir = png_outdir,\
