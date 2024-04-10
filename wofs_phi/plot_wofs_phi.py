@@ -202,13 +202,15 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
     #orig_levels_tornado = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35,\
     #                            0.4, 0.45, 0.5]) 
 
-    orig_levels_tornado = np.array([0.05, 0.1, 0.2, 0.3, 0.4, 0.5]) 
+    #orig_levels_tornado = np.array([0.05, 0.1, 0.2, 0.3, 0.4, 0.5]) 
+    orig_levels_tornado = np.array([0.1, 0.3, 0.5, 0.7, 0.9]) 
 
     #levels_tornado = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35,\
     #                    0.40, 0.45, 0.5]) 
 
     orig_linewidths = np.linspace(0.1, 2.0, len(orig_levels))
-    orig_linewidths_tornado = np.linspace(0.1, 2.0, len(orig_levels_tornado))
+    #orig_linewidths_tornado = np.linspace(0.1, 2.0, len(orig_levels_tornado))
+    orig_linewidths_tornado = np.linspace(0.5, 2.5, len(orig_levels_tornado))
 
     colors = ["black" for l in orig_levels]
 
@@ -256,6 +258,7 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
         color_cont_data = data[v]
 
         if ("tornado" in v):
+
             cont_kwargs_dict = {'levels': orig_levels_tornado, 'extend': extend_var, 'linewidths': orig_linewidths_tornado, \
                         'linestyles': 'solid', 'colors': colors,\
                         'alpha': alpha, 'add_labels': True}
