@@ -482,7 +482,7 @@ class MLPrediction:
                     mlp.set_probs(grid_obj)
 
                     #TODO: Set the SR probs (if we're using SR mapping)
-                    mlp.set_sr_probs(specs, train_type, radius_float, mode_type)
+                    mlp.set_sr_probs(specs, train_type, radius_float, mode_type, grid_obj)
 
                     #Append to list 
                     mlp_list.append(mlp) 
@@ -497,12 +497,13 @@ class MLPrediction:
         return 
 
 
-    def set_sr_probs(self, specs_obj, train_type, radius, mode_str):
+    def set_sr_probs(self, specs_obj, train_type, radius, mode_str, gridObj):
         #Maps the raw probabilities to success ratios and assigns to class attribute
         #srs2d
         #@specs_obj is a forecast specs object
         #@mode_str is the string corresponding to forecast or warning mode :
             #"forecast" or "warning"
+        #@grid_obj is a Grid object
     
         #startmin = int((specs_obj.start_valid_dt - specs_obj.wofs_init_time_dt).seconds/60)
         startmin = specs_obj.get_minutes_from_wofs_init_to_start_valid()
@@ -527,7 +528,7 @@ class MLPrediction:
             sr_dict[str(round(t,2))] = sr
         for i in range(len(probs)):
             srs1d[i] = sr_dict[str(probs[i])]
-        self.srs2d = srs1d.reshape(MLTrainer.GRID_SHAPE_X, MLTrainer.GRID_SHAPE_Y)
+        self.srs2d = srs1d.reshape(gridObj.nx, gridObj.ny)
         
         return
 
