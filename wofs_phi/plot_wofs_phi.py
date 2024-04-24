@@ -270,12 +270,12 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
         else: 
             #Start contouring at 30% instead of 10% if we're trained on LSRs + warnings
             
-            if ("obs_and_warnings" in v):
-                levels = orig_levels[1:]
-                linewidths = orig_linewidths[1:]
-            else:
-                levels = copy.deepcopy(orig_levels)
-                linewidths = copy.deepcopy(orig_linewidths) 
+            #if ("obs_and_warnings" in v):
+            levels = orig_levels[1:]
+            linewidths = orig_linewidths[1:]
+            #else:
+                #levels = copy.deepcopy(orig_levels)
+                #linewidths = copy.deepcopy(orig_linewidths) 
 
             cont_kwargs_dict = {'levels': levels, 'extend': extend_var, 'linewidths': linewidths, \
                         'linestyles': 'solid', 'colors': colors,\
