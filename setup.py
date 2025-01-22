@@ -54,4 +54,5 @@ setup(
         'Bug Reports': 'https://github.com/NOAA-National-Severe-Storms-Laboratory/frdd-wofs-phi/issues',
         'Source': 'https://github.com/NOAA-National-Severe-Storms-Laboratory/frdd-wofs-phi',
     },
+    license_files = []
 )
