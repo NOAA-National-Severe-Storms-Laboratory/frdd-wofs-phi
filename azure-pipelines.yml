@@ -34,7 +34,7 @@ stages:
         # Install mamba to manage dependencies faster
         - bash: |
             conda config --set allow_conda_downgrades true
-            conda install conda=23.11.0 -y
+            conda install python=3.11 conda=23.11.0 -y
             # conda install --yes mamba -c conda-forge
           displayName: downgrade conda
      
