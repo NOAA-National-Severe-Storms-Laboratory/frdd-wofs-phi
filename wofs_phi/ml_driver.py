@@ -656,11 +656,13 @@ def create_warning_mode_training(train_types):
     '''
 
     mode = "warning" 
+    useCintineo = True 
 
-    window = 60 #Focus on 60 minute windows 
+    window = 120 #Focus on 60 minute windows 
     date_file = (c.base_path/"probSevere_dates.txt")
     dates = read_txt(date_file)
-    report_radius = 39 #in km 
+    #report_radius = 39 #in km 
+    report_radius = 15 #in km
 
 
     start_times = ["1735", "1805", "1835", "1905", "1935", "2005", "2035", "2105",\
@@ -697,10 +699,9 @@ def create_warning_mode_training(train_types):
 
             #find start and end valid times 
             
-
             #Now, start MLDriver object 
             mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir,\
-                    mode)
+                    mode, useCintineo)
 
             #Use this to drive the forecast 
             ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
@@ -722,16 +723,17 @@ def create_warning_mode_training(train_types):
             #Note: Can also check to make sure we don't already have a npy file 
             #if (proceed_wofs == True and proceed_ps == True and already_done == False):
             if (proceed_wofs == True and proceed_ps == True):
+                print ("generating") 
 
                 ml.generate()
             
 
-            if (proceed_wofs == True and proceed_ps == True and \
-                    already_done_reps == False):
-            
-                #Create a report object and generate/save the 
-                #reports grid 
-                pass
+            #if (proceed_wofs == True and proceed_ps == True and \
+            #        already_done_reps == False):
+            # 
+            #    #Create a report object and generate/save the 
+            #    #reports grid 
+            #    pass
 
     return 
 
