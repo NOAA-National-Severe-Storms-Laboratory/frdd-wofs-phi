@@ -607,8 +607,13 @@ class MLPrediction:
 
         if (mode_str == "warning"):
 
-            pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window30-90_r%skm.pkl"\
+            if (specs_obj.forecast_window == 60): 
+                pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window30-90_r%skm.pkl"\
                         %(c.rf_dir, train_string, haz_name, specs_obj.forecast_window, radius)
+            elif (specs_obj.forecast_window == 120):
+                pkl_filename = "%s/%s_trained_wofsphi_%s_%smin_window30-150_r%skm.pkl"\
+                        %(c.rf_dir, train_string, haz_name, specs_obj.forecast_window, radius)
+
 
         else: 
 
