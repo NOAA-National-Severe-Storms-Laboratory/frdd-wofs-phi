@@ -66,6 +66,7 @@ sr_dir = ""
 #Path where to save the ncdf files 
 #ncdf_save_dir = "/work/eric.loken/wofs/2024_update/SFE2024/ncdf_files"
 #ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
+
 ncdf_save_dir = "/home/eric.loken/ncdf_test"
 
 #TODO: Path indicating where to save the png files to
@@ -84,6 +85,7 @@ plot_forecasts = True #Tells whether or not to create the .png files for wofs vi
 
 nc_outdir = "." #Where to place the final netcdf files #Needed for real time
 #nc_outdir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
+nc_outdir = "/home/eric.loken/ncdf_test"
 
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
@@ -127,7 +129,7 @@ train_warnings_sampled_1d_dat_dir = '/work/ryan.martz/wofs_phi_data/training_dat
 raw_torp_training_path = "/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp"
 
 #need to change this to reflect the real time directory!
-#real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv'
+#real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv/latest'
 real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv/sfe2025_test'
 
 #Path to the reports coordinates directory -- i.e., where are the coords.txt 
@@ -141,8 +143,8 @@ reps_coords_dir = "/work/eric.loken/wofs/new_torn/storm_events_reports/fromThea"
 #use_ALL_files = False
 
 #wofs_base_path = "/work/mflora/SummaryFiles" #Obviously, will need to change on cloud
-wofs_base_path = "/work2/wof/SummaryFiles"
 
+wofs_base_path = "/work2/wof/SummaryFiles"
 max_cores = 30 #max number of cores to use for parallelization
 
 dx_km = 3.0 #horizontal grid spacing of wofs in km 
@@ -196,12 +198,12 @@ all_fields_file = (base_path / "all_fields.txt") #Holds all the predictor fields
 all_methods_file = (base_path / "all_methods.txt") #Holds all the preprocessing methods
 
 #wofs_dir = "/work/mflora/SummaryFiles/"
+wofs_dir = "/work2/wof/SummaryFiles/"
 #if ps_version == 2:
 #    ps_dir = "/work/eric.loken/wofs/probSevere/"
 #else:
 #    ps_dir = "/work/eric.loken/wofs/probSevere3_data/new_cintineo/PS_json/"
 
-wofs_dir = "/work2/wof/SummaryFiles/"
 ps_dir = "/work/eric.loken/wofs/probSevere3_data/new_cintineo/PS_json/"
 
 ps_search_minutes = 180 #how long before start time do we need to search for ps files to generate predictors
