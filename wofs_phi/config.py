@@ -60,12 +60,13 @@ torp_vars_filename = '/work/ryan.martz/wofs_phi_data/training_data/predictors/to
 
 #Path to the trained rfs 
 #rf_dir = "/work/ryan.martz/wofs_phi_data/models/wofs_psv2_no_torp/hail/wofslag_25/length_60"
-rf_dir = "/work/eric.loken/wofs/2024_update/SFE2024/rf_models"
+rf_dir = "/work/eric.loken/wofs/2024_update/SFE2024/rf_models/latest"
 sr_dir = ""
 
 #Path where to save the ncdf files 
 #ncdf_save_dir = "/work/eric.loken/wofs/2024_update/SFE2024/ncdf_files"
-ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
+#ncdf_save_dir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
+ncdf_save_dir = "/home/eric.loken/ncdf_test"
 
 #TODO: Path indicating where to save the png files to
 #May implement this later; for now, let's just save to the same location as the 
@@ -126,7 +127,8 @@ train_warnings_sampled_1d_dat_dir = '/work/ryan.martz/wofs_phi_data/training_dat
 raw_torp_training_path = "/work/ryan.martz/wofs_phi_data/training_data/predictors/raw_torp"
 
 #need to change this to reflect the real time directory!
-real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv'
+#real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv'
+real_time_sr_map_dir = '/work/eric.loken/wofs/2024_update/SFE2024/sr_csv/sfe2025_test'
 
 #Path to the reports coordinates directory -- i.e., where are the coords.txt 
 #files that need to be read in during training? 
@@ -136,9 +138,10 @@ reps_coords_dir = "/work/eric.loken/wofs/new_torn/storm_events_reports/fromThea"
 
 #If True, use the ALL naming convention (will be true on cloud) 
 #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
-use_ALL_files = False
+#use_ALL_files = False
 
-wofs_base_path = "/work/mflora/SummaryFiles" #Obviously, will need to change on cloud
+#wofs_base_path = "/work/mflora/SummaryFiles" #Obviously, will need to change on cloud
+wofs_base_path = "/work2/wof/SummaryFiles"
 
 max_cores = 30 #max number of cores to use for parallelization
 
@@ -179,10 +182,10 @@ extra_predictor_names = ["lat", "lon", "wofs_x", "wofs_y", "wofs_init_time"]
 #obs_radii_float = [39, 30, 15, 7.5]
 #final_str_obs_radii = ["39", "30","15", "7_5"] #form to use for final ncdf files
 
-obs_radii = ["39"]
-obs_radii_str = ["39.0"]
-obs_radii_float = [39]
-final_str_obs_radii = ["39"] #form to use for final ncdf files 
+obs_radii = ["15", "39"]
+obs_radii_str = ["15.0", "39.0"]
+obs_radii_float = [15, 39]
+final_str_obs_radii = ["15", "39"] #form to use for final ncdf files 
 
 final_hazards = ["hail", "wind", "tornado"] #for naming in final ncdf file 
 
@@ -192,11 +195,14 @@ wofs_methods_file = (base_path / "standard_wofs_methods.txt")
 all_fields_file = (base_path / "all_fields.txt") #Holds all the predictor fields
 all_methods_file = (base_path / "all_methods.txt") #Holds all the preprocessing methods
 
-wofs_dir = "/work/mflora/SummaryFiles/"
-if ps_version == 2:
-    ps_dir = "/work/eric.loken/wofs/probSevere/"
-else:
-    ps_dir = "/work/eric.loken/wofs/probSevere3_data/new_cintineo/PS_json/"
+#wofs_dir = "/work/mflora/SummaryFiles/"
+#if ps_version == 2:
+#    ps_dir = "/work/eric.loken/wofs/probSevere/"
+#else:
+#    ps_dir = "/work/eric.loken/wofs/probSevere3_data/new_cintineo/PS_json/"
+
+wofs_dir = "/work2/wof/SummaryFiles/"
+ps_dir = "/work/eric.loken/wofs/probSevere3_data/new_cintineo/PS_json/"
 
 ps_search_minutes = 180 #how long before start time do we need to search for ps files to generate predictors
 ps_recent_file_threshold = 10 #need a file in last __ minutes to do training/real time running
