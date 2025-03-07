@@ -61,12 +61,13 @@ from sklearn.calibration import calibration_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import xarray as xr
-#from . import config_2025_test as c
-#from . import utilities
-#from . import predictor_extractor as pex
-import config_2025_test as c
-import utilities 
-import predictor_extractor as pex 
+from . import config as c 
+from . import utilities
+from . import predictor_extractor as pex
+
+#import config_2025_test as c
+#import utilities 
+#import predictor_extractor as pex 
 import warnings
 import cartopy.feature as cfeature
 import cartopy.crs as ccrs
@@ -74,9 +75,9 @@ from wofs.common.zarr import open_dataset
 from wofs.common import remove_reserved_keys
 from wofs.post.utils import save_dataset
 
-#from .plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mode
+from .plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mode
 
-from plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mode
+#from plot_wofs_phi import plot_wofs_phi_forecast_mode, plot_wofs_phi_warning_mode
 
 
 #_wofs = '/home/monte.flora/python_packages/frdd-wofs-post'
