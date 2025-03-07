@@ -2,8 +2,12 @@
 # Script that will drive the ML training and testing
 #===================================================
 
-from wofs_phi import * 
-import config_2025_test as c
+#from wofs_phi import * 
+#import config_2025_test as c
+
+from .wofs_phi import *
+from . import config as c
+
 import os.path
 from itertools import compress
 import warnings
