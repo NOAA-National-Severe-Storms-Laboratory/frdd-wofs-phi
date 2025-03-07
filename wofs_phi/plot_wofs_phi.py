@@ -15,7 +15,9 @@ from wofs.plotting.data_preprocessing import DataPreProcessor
 from wofs.plotting.util import check_file_type
 from wofs.plotting.wofs_colors import WoFSColors as wc
 from datetime import datetime, timedelta
-from . import config as c 
+#from . import config as c 
+#import config as c 
+import config_2025_test as c
 import matplotlib
 import copy 
 
@@ -52,8 +54,9 @@ def plot_wofs_phi_forecast_mode(nc_fname, png_outdir, wofs_init_dt, \
     for t in range(len(training_types)):
         training_type = training_types[t] 
         for h in c.final_hazards: 
-            vars_to_plot.append('wofsphi__%s__39km__%smin__%s' \
-                    %(h, time_window, training_type))
+            for radius in c.final_str_obs_radii:
+                vars_to_plot.append('wofsphi__%s__%skm__%smin__%s' \
+                        %(h, radius, time_window, training_type))
 
 
     #NOTE/TODO: Might need to make this different for tornadoes 
