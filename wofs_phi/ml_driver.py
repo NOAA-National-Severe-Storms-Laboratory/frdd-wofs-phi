@@ -2,8 +2,8 @@
 # Script that will drive the ML training and testing
 #===================================================
 
-from .wofs_phi import * 
-from . import config as c
+from wofs_phi import * 
+import config_2025_test as c
 import os.path
 from itertools import compress
 import warnings
@@ -49,7 +49,7 @@ class MLDriver:
 
     @classmethod 
     def start_driver(cls, before00zDate, timeWindow, wofsInitTime, wofsLeadTime, psPath,\
-                current_mode):
+                current_mode, useCintineo):
         '''Creates an MLDriver object given a date (from before 00z; @before00zDate), 
             time window (in minutes; @timeWindow), 
             wofs initialization time (string (YYYYMMDD); @wofsInitTime), 
@@ -57,7 +57,9 @@ class MLDriver:
             @Returns MLDriver object
             @current_mode is the string of the mode we're in: 
                 "forecast" for forecast mode, 
-                "warning" for warning mode  
+                "warning" for warning mode
+            @useCintineo is boolean; if True, use the ProbSevere files given by John
+                Cintineo   
 
         '''
 
@@ -69,7 +71,10 @@ class MLDriver:
                                 before00zDate) 
 
         #Find ps files 
-        ps_file_list = MLDriver.find_ps_files_from_first_wofs(wofs_file_list[0], current_mode)
+        #ps_file_list = MLDriver.find_ps_files_from_first_wofs(wofs_file_list[0], current_mode)
+        ps_file_list = MLDriver.find_ps_files_from_first_wofs(wofs_file_list[0], current_mode, useCintineo)
+
+        #print (ps_file_list) 
         
         #Find torp files
         torp_file_list = TORP.get_torp_files(wofs_file_list[0])
@@ -198,7 +203,7 @@ class MLDriver:
 
 
     @staticmethod
-    def find_ps_files_from_first_wofs(first_wofs_file, mode_str):
+    def find_ps_files_from_first_wofs(first_wofs_file, mode_str, useCintineo):
         ''' Finds the set of ProbSevere files given the first wofs
             file.
 
@@ -216,6 +221,8 @@ class MLDriver:
 
             @mode_str is the string corresponding to which mode we're in;
                 "forecast" for forecast mode ; "warning" for warning mode
+            @useCintineo is boolean; if True, use the probSevere files provided
+                by John Cintineo
         '''
         
         #First, need to get the datetime object associated with the
@@ -245,14 +252,13 @@ class MLDriver:
         #Get the list of probSevere datetime files
         ps_dt_list = MLDriver.get_ps_datetimes(first_ps_dt) 
         
-        ps_filenames = MLDriver.get_ps_names_from_dt_list(ps_dt_list)
+        ps_filenames = MLDriver.get_ps_names_from_dt_list(ps_dt_list, useCintineo)
 
 
         return ps_filenames
 
-
     @staticmethod
-    def get_ps_names_from_dt_list(dt_list):
+    def get_ps_names_from_dt_list(dt_list, useCintineo):
         '''Returns a list of probSevere filenames from datetime list'''
 
         ps_names = []
@@ -262,17 +268,23 @@ class MLDriver:
             
             #get date and time from datetime object
             date_str, time_str = ForecastSpecs.dattime_to_str(dt)
-            
-            if (c.ps_version == 2):
-                
+           
+            if (useCintineo == False and c.ps_version == 2):  
                 #TODO: Might need to add capability to check for each second
                 #for real-time. Might also not be a problem in real time. 
                 ps_name = "MRMS_EXP_PROBSEVERE_%s.%s00.json" %(date_str, time_str)
                 
             #TODO: Need to implement capabilities for version 3
-            elif (c.ps_version == 3):
-                year = date[0:4]
-                ps_name = "%s/SSEC_AWIPS_PROBSEVERE-V3_%s_%s00.json" %(year, date_str, time_str)
+            #elif (c.ps_version == 3):
+
+            elif (useCintineo == True and c.ps_version == 3): 
+                year = date_str[0:4]
+                ps_name = "%s/%s/PROBSEVERE_good_motions/SSEC_AWIPS_PROBSEVERE-V3_%s_%s00.json" %(year, date_str, date_str, time_str)
+
+            elif (useCintineo == True and c.ps_version == 2):
+                year = date_str[0:4]
+                ps_name = "%s/%s/PROBSEVERE_good_motions/SSEC_AWIPS_PROBSEVERE_%s_%s00.json" %(year, date_str, date_str, time_str)
+
 
             ps_names.append(ps_name)
 
@@ -516,8 +528,12 @@ def create_forecast_mode_training(train_types):
     ''' Creates training files'''
 
     mode = "forecast" 
+    useCintineo = True 
 
-    window = 60 #Focus on 60 minute windows 
+    #window = 60 #Focus on 60 minute windows 
+    window = 120
+    #window = 60
+    
     
     date_file = (c.base_path/"probSevere_dates.txt")
     #date_file = "first_obs_dates.txt" 
@@ -539,7 +555,9 @@ def create_forecast_mode_training(train_types):
 
     #dates = dates[37:]
     training_init_times = ["2300"] 
-    dates = ["20190506"] 
+    #dates = ["20190506"] 
+    #dates = ["20200507"] 
+    dates = ["20190507"] 
     #training_init_times = ["2200", "2300", "0000"]
     #training_init_times = ["2300"] 
     #dates = ["20190501"] 
@@ -576,19 +594,33 @@ def create_forecast_mode_training(train_types):
     #Get the data
     for lead_time in lead_times:
         for date in dates:
+            year = date[0:4]
             for init_time in training_init_times:
                 print (date, init_time, lead_time)
+
+                #specific_ps_dir = "%s/%s/%s/PROBSEVERE_good_motions" %(c.ps_dir, year, date)
+
+                #mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir,\
+                #                    mode)
+
                 mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir,\
-                                    mode)
+                                    mode, useCintineo)
+                
 
                 #Use this to drive the forecast 
                 ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
                         mld.wofs_path, mld.torp_files, c.nc_outdir, mode, train_types)
 
+                print (c.nc_outdir) 
+
                 #Check to make sure wofs files exist; if so we can generate. 
                 proceed_wofs = does_wofs_exist(mld.wofs_path, mld.wofs_files[0]) 
 
+                print (mld.ps_files[0]) 
                 proceed_ps = does_ps_exist(mld.ps_path, mld.ps_files[0])
+
+                print (proceed_wofs, proceed_ps) 
+        
 
                 already_done = does_full_npy_exist(date, init_time, mld.ps_init,\
                                     mld.wofs_files[0], mld.wofs_files[-1], \
@@ -603,6 +635,7 @@ def create_forecast_mode_training(train_types):
                 #Note: Can also check to make sure we don't already have a npy file 
                 #if (proceed_wofs == True and proceed_ps == True and already_done == False):
                 if (proceed_wofs == True and proceed_ps == True):
+                    print ("generating") 
 
                     ml.generate()
 
@@ -624,11 +657,13 @@ def create_warning_mode_training(train_types):
     '''
 
     mode = "warning" 
+    useCintineo = True 
 
-    window = 60 #Focus on 60 minute windows 
+    window = 120 #Focus on 60 minute windows 
     date_file = (c.base_path/"probSevere_dates.txt")
     dates = read_txt(date_file)
-    report_radius = 39 #in km 
+    #report_radius = 39 #in km 
+    report_radius = 15 #in km
 
 
     start_times = ["1735", "1805", "1835", "1905", "1935", "2005", "2035", "2105",\
@@ -665,10 +700,9 @@ def create_warning_mode_training(train_types):
 
             #find start and end valid times 
             
-
             #Now, start MLDriver object 
             mld = MLDriver.start_driver(date, window, init_time, lead_time, c.ps_dir,\
-                    mode)
+                    mode, useCintineo)
 
             #Use this to drive the forecast 
             ml = MLGenerator(mld.wofs_files, mld.ps_files, mld.ps_path,\
@@ -690,16 +724,17 @@ def create_warning_mode_training(train_types):
             #Note: Can also check to make sure we don't already have a npy file 
             #if (proceed_wofs == True and proceed_ps == True and already_done == False):
             if (proceed_wofs == True and proceed_ps == True):
+                print ("generating") 
 
                 ml.generate()
             
 
-            if (proceed_wofs == True and proceed_ps == True and \
-                    already_done_reps == False):
-            
-                #Create a report object and generate/save the 
-                #reports grid 
-                pass
+            #if (proceed_wofs == True and proceed_ps == True and \
+            #        already_done_reps == False):
+            # 
+            #    #Create a report object and generate/save the 
+            #    #reports grid 
+            #    pass
 
     return 
 
@@ -813,7 +848,8 @@ def main():
 
     #SET train type here 
     #options: "obs", "warnings", or "obs_and_warnings"
-    train_types = ["obs", "obs_and_warnings"]
+    #train_types = ["obs", "obs_and_warnings"]
+    train_types = ["obs_and_warnings"] 
     
 
     if (mode_to_generate == "forecast"):
