@@ -197,8 +197,9 @@ def plot_wofs_phi_warning_mode(nc_fname, png_outdir, wofs_init_dt, \
     for t in range(len(training_types)):
         training_type = training_types[t]
         for h in c.final_hazards:
-            vars_to_plot.append('wofsphi__%s__39km__%smin__%s' \
-                    %(h, time_window, training_type))
+            for radius in c.final_str_obs_radii:
+                vars_to_plot.append('wofsphi__%s__%skm__%smin__%s' \
+                    %(h, radius, time_window, training_type))
 
 
     #levels = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
