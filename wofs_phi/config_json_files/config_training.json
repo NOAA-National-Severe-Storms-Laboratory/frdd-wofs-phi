@@ -1,0 +1,9 @@
+{
+    "generate_forecasts": true,
+    "generate_reports": true,
+    "save_npy": true,
+    "save_ncdf": true,
+    "plot_forecasts": true,
+    "nc_outdir": ".",
+    "use_ALL_files": true
+}
