@@ -58,6 +58,9 @@ import cartopy.feature as cfeature
 import cartopy.crs as ccrs
 
 #Other imports here (eventually): 
+from . import grid 
+from . import utilities 
+
 #from . import config as c
 #from . import utilities
 #from . import predictor_extractor as pex
@@ -111,6 +114,12 @@ class MLGenerator:
         """Generates the wofs-phi forecasts based on the instance variables provided. 
             Kind of like the de facto "main method" for generating the predictions.
         """
+
+        #full_wofs_file = f"{self.wofs_path}/{self.wofs_files[0]}"
+
+        #Get the forecast Grid object from the first wofs file 
+        #TODO 
+        fcst_grid = grid.Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
 
 
         return 

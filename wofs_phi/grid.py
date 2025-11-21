@@ -6,6 +6,9 @@
 # to be flexible. 
 #=======================================================
 
+from wofs.common.zarr import open_dataset
+from . import utilities as utils 
+
 class Grid: 
     """ Defines a forecast grid for ML, plotting, etc."""
 
@@ -47,38 +50,29 @@ class Grid:
     #TODO: Not finished with this. 
     @classmethod
     def create_wofs_grid(cls, wofs_path, wofs_file):
-        '''Creates a Grid object from a wofs path and wofs file.'''
+        """Creates and returns a Grid object from a wofs path 
+            and wofs file. 
 
-        full_wofs_file = "%s/%s" %(wofs_path, wofs_file)
+        """
+
+        full_wofs_file = f"{wofs_path}/{wofs_file}"
 
         #Get legacy file
-        legacy_fnames = WoFS_Agg.get_legacy_filenames("mslp", [wofs_file])
-        legacy_fname = legacy_fnames[0]
+        legacy_fnames = utils.get_legacy_filenames("mslp", [wofs_file])
 
-        full_legacy_wofs_file = "%s/%s" %(wofs_path, legacy_fname)
+        full_legacy_wofs_file = f"{wofs_path}/{legacy_fnames[0]}"
 
         #Add capabilities to account for ALL or legacy file names
-        if (c.use_ALL_files == True):
-            try:
-                ds = open_dataset(full_wofs_file, decode_times=False)
-            except FileNotFoundError:
-                try:
-                    ds = open_dataset(full_legacy_wofs_file, decode_times=False)
-                except:
-                    print ("Neither %s nor %s found" %(full_wofs_file, full_legacy_wofs_file))
-                    quit()
-
-        else:
-
+        #First, check for an ALL file; if none exists, then check for 
+        #a legacy file. 
+        try:
+            ds = open_dataset(full_wofs_file, decode_times=False)
+        except FileNotFoundError:
             try:
                 ds = open_dataset(full_legacy_wofs_file, decode_times=False)
-            except FileNotFoundError:
-                try:
-                    ds = open_dataset(full_wofs_file, decode_times=False)
-                except:
-                    print ("Neither %s nor %s found" \
-                            %(full_legacy_wofs_file, full_wofs_file))
-                    quit()
+            except:
+                print ("Neither %s nor %s found" %(full_wofs_file, full_legacy_wofs_file))
+                quit()
 
 
         ny = int(ds.attrs['ny'])
@@ -100,10 +94,9 @@ class Grid:
         xArr, yArr = get_xy_points(ny, nx)
 
         #Create new wofs Grid object 
-        wofs_grid = cls(ny, nx, wofsLats, wofsLons, Tlat1, Tlat2, Stlon, SW_lat, NE_lat, SW_lon, NE_lon, yArr, xArr)
+        wofs_grid = Grid(ny, nx, wofsLats, wofsLons, Tlat1, Tlat2, Stlon, SW_lat, NE_lat, SW_lon, NE_lon, yArr, xArr)
 
         return wofs_grid
-
 
 
 #Global methods 
