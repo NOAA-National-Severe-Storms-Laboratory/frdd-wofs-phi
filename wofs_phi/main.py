@@ -17,8 +17,12 @@
 import sys
 _wofs = '/home/eric.loken/python_packages/frdd-wofs-post'
 _wofsphi = '/home/eric.loken/python_packages/frdd-wofs-phi'
+_monte_python = '/home/eric.loken/python_packages/monte-python'
 sys.path.insert(0, _wofs)
 sys.path.insert(0, _wofsphi)
+sys.path.insert(0, _monte_python) 
+#sys.path.insert(0, '/home/monte.flora/python_packages/MontePython')
+
 
 from shapely.geometry import Point, MultiPolygon, Polygon, LineString
 from shapely.prepared import prep
@@ -58,8 +62,13 @@ import cartopy.feature as cfeature
 import cartopy.crs as ccrs
 
 #Other imports here (eventually): 
-from . import grid 
-from . import utilities 
+import grid 
+import utilities
+import wofs 
+
+#Will eventually have to take this form: 
+#from . import grid 
+#from . import utilities 
 
 #from . import config as c
 #from . import utilities
@@ -128,6 +137,25 @@ class MLGenerator:
 #Might be worth adding methods for training and real time usage
 
 
+def get_ps_files_from_times_and_dates(list_of_times, list_of_dates): 
+    """ Convenience function for use in main. Converts a list of times 
+            and dates into a list of Probsevere filenames. 
+        @Returns : List of probSevere files in format 
+            "MRMS_EXP_PROBSEVERE_{date}.{time}.json
+        @list_of_times : List of 4-character strings (e.g., ["0224", "0222", ...]) 
+        @list_of_dates : List of 8-character string dates of the same length
+            as list_of_times. e.g., ["20210605", "20210605", ...]
+    """ 
+
+    ps_times = [f"{p}00" for p in list_of_times]
+
+    ps_files = [f"MRMS_EXP_PROBSEVERE_{list_of_dates[p]}.{ps_times[p]}.json" \
+                     for p in range(len(ps_times))]
+
+
+    return ps_files 
+
+
 def main(): 
 
     """ NOTE: You can use this main method to 'drive' the code, especially if you
@@ -156,13 +184,41 @@ def main():
 
     #NOTE: Will have to change these to reflect updated paths for 
     #wofs summary files and (good) probSevere data on local machines.  
-    wofs_direc = "/work/mflora/SummaryFiles/20210604/0200"
+    #wofs_direc = "/work/mflora/SummaryFiles/20210604/0200"
+    wofs_direc = "/work2/wof/SummaryFiles" 
     ps_direc = "/work/eric.loken/wofs/probSevere"
 
 
     #Will need to set these
-    wofsFiles = [] 
-    psFiles = [] 
+
+    wofsFiles = ["wofs_ALL_05_20210605_0200_0225.nc", "wofs_ALL_06_20210605_0200_0230.nc", \
+                    "wofs_ALL_07_20210605_0200_0235.nc", "wofs_ALL_08_20210605_0200_0240.nc",\
+                    "wofs_ALL_09_20210605_0200_0245.nc", "wofs_ALL_10_20210605_0200_0250.nc",\
+                    "wofs_ALL_11_20210605_0200_0255.nc"]
+
+    #For testing second forecast period 
+    wofsFiles2 = ["wofs_ALL_11_20210605_0200_0255.nc", "wofs_ALL_12_20210605_0200_0300.nc",\
+                    "wofs_ALL_13_20210605_0200_0305.nc", "wofs_ALL_14_20210605_0200_0310.nc",\
+                    "wofs_ALL_15_20210605_0200_0315.nc", "wofs_ALL_16_20210605_0200_0320.nc",\
+                    "wofs_ALL_17_20210605_0200_0325.nc"]
+
+    #wofsFiles = [] 
+    psTimes = ["0224", "0222", "0220", "0218", "0216", "0214", "0212", "0210", "0208", "0206",\
+                "0204", "0202", "0200", "0158", "0156", "0154", "0152", "0150", "0148", "0146",\
+                "0144", "0142", "0140", "0138", "0136", "0134", "0132", "0130", "0128", "0126",\
+                "0124", "0122", "0120", "0118", "0116", "0114", "0112", "0110", "0108", "0106",\
+                "0104", "0102", "0100", "0058", "0056", "0054", "0052", "0050", "0048", "0046",\
+                "0044", "0042", "0040", "0038", "0036", "0034", "0032", "0030", "0028", "0026",\
+                "0024", "0022", "0020", "0018", "0016", "0014", "0012", "0010", "0008", "0006",\
+                "0004", "0002", "0000", "2358", "2356", "2354", "2352", "2350", "2348", "2346",\
+                "2344", "2342", "2340", "2338", "2336", "2334", "2332", "2330", "2328", "2326",\
+                "2324"]
+
+    psDates = ["20210605" for p in psTimes]
+    for a in range(73, len(psTimes)):
+        psDates[a] = "20210604"
+
+    psFiles = get_ps_files_from_times_and_dates(psTimes, psDates) 
 
     nc_output_dir = "." 
 
@@ -177,6 +233,7 @@ def main():
 
         ml_generator.generate() 
 
+    print ("Done with forecast mode generation (if applicable)") 
 
     if (do_warning_mode == True): 
 
@@ -186,7 +243,7 @@ def main():
         ml_generator.generate()     
 
     
-
+    print ("Done with warning mode generation (if applicable)") 
 
     return 
 
