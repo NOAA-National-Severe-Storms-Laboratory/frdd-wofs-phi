@@ -9,8 +9,8 @@
 from wofs.common.zarr import open_dataset
 #from . import utilities as utils 
 import utilities as utils 
-#import wofs 
-from wofs import get_legacy_filenames 
+import wofs_fcst
+import numpy as np
 
 class Grid: 
     """ Defines a forecast grid for ML, plotting, etc."""
@@ -62,7 +62,7 @@ class Grid:
 
         #Get legacy file
         #legacy_fnames = utils.get_legacy_filenames("mslp", [wofs_file])
-        legacy_fnames = get_legacy_filenames("mslp", [wofs_file])
+        legacy_fnames = wofs_fcst.get_legacy_filenames("mslp", [wofs_file]) 
 
         full_legacy_wofs_file = f"{wofs_path}/{legacy_fnames[0]}"
 

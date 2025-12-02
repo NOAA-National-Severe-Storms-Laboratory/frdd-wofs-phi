@@ -185,7 +185,8 @@ def main():
     #NOTE: Will have to change these to reflect updated paths for 
     #wofs summary files and (good) probSevere data on local machines.  
     #wofs_direc = "/work/mflora/SummaryFiles/20210604/0200"
-    wofs_direc = "/work2/wof/SummaryFiles" 
+    #wofs_direc = "/work2/wof/SummaryFiles" 
+    wofs_direc = "/work2/wof/SummaryFiles/20210604/0200"
     ps_direc = "/work/eric.loken/wofs/probSevere"
 
 
