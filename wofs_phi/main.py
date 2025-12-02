@@ -130,6 +130,7 @@ class MLGenerator:
         #TODO 
         fcst_grid = grid.Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
 
+        #Need to create forecast specifications object 
 
         return 
 
