@@ -90,5 +90,20 @@ class ForecastSpecs:
             @json_config_filename : str : full path to json config file
         """
 
+        start_valid, start_valid_date, start_valid_dt = utils.find_date_time_from_wofs(\
+            wofs_files[0], "valid")
+
+        end_valid, end_valid_date, end_valid_dt = utils.find_date_time_from_wofs(\
+            wofs_files[-1], "valid") 
+
+        wofs_init_time, wofs_init_date, wofs_init_time_dt = utils.find_date_time_from_wofs(\
+            wofs_files[0], "init") 
+
+
+        print (start_valid, start_valid_date, start_valid_dt)
+        print (end_valid, end_valid_date, end_valid_dt) 
+        print (wofs_init_time, wofs_init_date, wofs_init_time_dt) 
+        quit() 
+
         return 
 

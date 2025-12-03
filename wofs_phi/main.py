@@ -194,7 +194,10 @@ def main():
     #wofs summary files and (good) probSevere data on local machines.  
     #wofs_direc = "/work/mflora/SummaryFiles/20210604/0200"
     #wofs_direc = "/work2/wof/SummaryFiles" 
+
     wofs_direc = "/work2/wof/SummaryFiles/20210604/0200"
+    #wofs_direc = "/work2/wof/SummaryFiles/20210604/2300"
+
     ps_direc = "/work/eric.loken/wofs/probSevere"
 
 
@@ -210,6 +213,9 @@ def main():
                     "wofs_ALL_13_20210605_0200_0305.nc", "wofs_ALL_14_20210605_0200_0310.nc",\
                     "wofs_ALL_15_20210605_0200_0315.nc", "wofs_ALL_16_20210605_0200_0320.nc",\
                     "wofs_ALL_17_20210605_0200_0325.nc"]
+
+    wofsFiles3 = ["wofs_ALL_41_20210604_2300_0225.nc", "wofs_ALL_42_20210604_2300_0230.nc",\
+                    "wofs_ALL_43_20210604_2300_0235.nc"] 
 
     #wofsFiles = [] 
     psTimes = ["0224", "0222", "0220", "0218", "0216", "0214", "0212", "0210", "0208", "0206",\

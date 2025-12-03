@@ -12,14 +12,15 @@ import datetime as dt
 #TODO: Not done yet. Also may need to rework. 
 def find_date_time_from_wofs(wofs_file, fcst_type): 
 
-    """ Finds/returns the (string) time and date (e.g., start or end of the
-        forecast valid window) associated with the given WoFS summary file. 
-        NOTE: Assumes the format similar to the following: 
+    """ Finds/returns the string time, string date, 
+        and datetime object corresponding to either
+        the wofs initialization time or wofs valid time associated with the given
+        wofs summary file. NOTE: Assumes the format similar to the following: 
         "wofs_ALL_${index}_${initialization_date}_${initialization_time}_${end_valid_time}.nc"
 
         @wofs_file : str : WoFS summary filename 
         @fcst_type : str : Tells what type of forecast this is (i.e., which
-            time to return). "forecast" means it will return the valid time; 
+            time to return). "valid" means it will return the (end) valid time; 
             "init" means it will retrun the initialization time. 
 
         NOTE: The date returned will be the date associated with the valid time, 
@@ -53,17 +54,19 @@ def find_date_time_from_wofs(wofs_file, fcst_type):
         dt_valid += timedelta(days=1) 
 
 
-    if (fcst_type == "forecast"): 
+    if (fcst_type == "valid"): 
 
         time = copy.deepcopy(validTime) 
         date = dt_valid.strftime("%Y%m%d") 
+        use_datetime = copy.deepcopy(dt_valid) 
 
     elif (fcst_type == "init"): 
 
         time = copy.deepcopy(initTime)
         date = dt_initial.strftime("%Y%m%d") 
+        use_datetime = copy.deepcopy(dt_initial) 
 
-    return time, date
+    return time, date, use_datetime
 
     #OLD code: 
     ##NOTE: Let's modify the below code to be cleaner. 
