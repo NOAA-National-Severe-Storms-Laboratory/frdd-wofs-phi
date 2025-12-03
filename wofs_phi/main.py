@@ -65,6 +65,7 @@ import cartopy.crs as ccrs
 import grid 
 import utilities
 import wofs 
+import forecast_specs
 
 #Will eventually have to take this form: 
 #from . import grid 
@@ -116,6 +117,7 @@ class MLGenerator:
         self.wofs_path = wofs_path
         self.nc_outdir = nc_outdir
         self.mode = mode
+        self.json_config_file = json_config_file
         self.torp_files = torp_files
 
 
@@ -130,7 +132,13 @@ class MLGenerator:
         #TODO 
         fcst_grid = grid.Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
 
-        #Need to create forecast specifications object 
+        #Need to create forecast specifications object -- Will pass in json config
+        #file
+        f_specs = forecast_specs.ForecastSpecs.create_forecast_specs(self.ps_files,\
+                    self.wofs_files, self.json_config_file)
+        
+
+        
 
         return 
 
@@ -173,7 +181,6 @@ def main():
     #set in the json file. 
     on_cloud = False #True if on cloud, False otherwise 
     is_training = True # True if using for model training; False if using for realtime 
-
 
     do_warning_mode = False #True if we want to generate warning mode predictions
     do_forecast_mode = True #True if we want to generate forecast mode predictions
