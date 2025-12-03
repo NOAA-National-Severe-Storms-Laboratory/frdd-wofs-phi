@@ -110,7 +110,13 @@ class ForecastSpecs:
         valid_window = utils.subtract_dt(end_valid_dt, start_valid_dt, True)
 
         #Find PS init time from the first (most recent) PS file 
+        ps_init_time, ps_init_date = utils.find_ps_date_time(ps_files[0], json_config_filename) 
+
+        #Get ps datetime objects 
+        ps_init_time_dt = utils.str_to_dattime(ps_init_time, ps_init_date) 
         
+        #COME BACK HERE
+
 
 
 

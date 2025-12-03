@@ -129,7 +129,6 @@ def timedelta_to_min(in_dt):
     return minutes
 
 
-
 def dattime_to_str(dt_obj): 
     """Returns 8-char date string (YYYYMMDD) and 4-char time string (HHMM) 
         based on datetime object. 
@@ -153,7 +152,65 @@ def read_json(jsonFilename):
     return data
 
 
+def find_ps_date_time(ps_file, jsonConfigFilename): 
+    """ Finds/Returns the (string) probSevere initialization time and date 
+        strings from the ProbSevere file 
+        @ps_file : str : Name of the ProbSevere file 
+        @jsonConfigFilename : str : Name of the .json config file 
+    """
 
+    #Obtain ProbSevere version (ps_version) from the .json config file
+    config_data = read_json(jsonConfigFilename) 
+
+    ps_version = config_data['ps_version']
+
+   
+    m = re.match('.*_(?P<date>\d{8})_(?P<time>\d{4})\d{2}.json$', ps_file)
+
+    if m != None:
+        return (m.group('time'), m.group('date'))
+    
+    if (ps_version == 2):
+        split_str = ps_file.split(".")
+        time = split_str[1]
+
+        #now get the date
+        date_split = ps_file.split("_")[3]
+
+        #get *only* the date (first 8 characters)
+        date = date_split[0:8]
+
+    #NOTE: Haven't debugged this yet 
+    elif (ps_version == 3):
+
+        split_str = ps_file.split("_")
+        time = split_str[4]
+        time = time.split(".")[0]
+
+        #Now get the date 
+        date = split_str[3]
+
+    #Now, remove the seconds 
+    time = time[0:4]
+
+
+    return time, date
+
+
+def str_to_dattime(string_time, string_date): 
+
+    """Returns a datetime object based on a string time and string date. 
+        @string_time : 4-char string : Time, Format HHMM, e.g., "0025"
+        @string_date : 8-char string : Date, Format YYYYMMDD, e.g., "20190504"
+    """
+
+    #combine string date and time 
+    full_string = f"{string_date}{string_time}"
+
+    dt_obj = datetime.strptime(full_string, "%Y%m%d%H%M")
+
+
+    return dt_obj
 
 
 

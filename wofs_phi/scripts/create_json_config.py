@@ -91,8 +91,9 @@ def main():
     #If True, use the ALL naming convention (will be true on cloud) 
     #If False, use the legacy naming convention (e.g., ENS, ENV, SVR, etc.) 
     use_ALL_files = True
-    
 
+    ps_version = 2 #Which version of ProbSevere to use
+    
     #TODO: Implement these methods
     methods_dict = get_methods_dict_from_files(txt_file_dir, all_fields_file, all_methods_file)
     single_point_fields = get_list_from_file(txt_file_dir, singlePtFile) 
@@ -135,7 +136,7 @@ def main():
                 "save_ncdf": save_ncdf, "plot_forecasts": plot_forecasts, \
                 "nc_outdir": nc_outdir, "use_ALL_files": use_ALL_files, \
                 "fields_methods_dict": methods_dict, "single_point_fields": single_point_fields,\
-                "next_day_times":next_day_times}
+                "next_day_times":next_day_times, "ps_version": ps_version}
 
 
     #Save to file 
