@@ -6,6 +6,7 @@
 
 import numpy as np 
 import utilities as utils 
+import json 
 
 
 class ForecastSpecs: 
@@ -90,6 +91,8 @@ class ForecastSpecs:
             @json_config_filename : str : full path to json config file
         """
 
+        #Find start/end valid and wofs initialization time/datetime objects from 
+        #the wofs summary file names. 
         start_valid, start_valid_date, start_valid_dt = utils.find_date_time_from_wofs(\
             wofs_files[0], "valid")
 
@@ -99,11 +102,19 @@ class ForecastSpecs:
         wofs_init_time, wofs_init_date, wofs_init_time_dt = utils.find_date_time_from_wofs(\
             wofs_files[0], "init") 
 
+        #Get the date before 00z; Will be most relevant for training, I believe. 
+        date_before_00z = utils.get_date_before_00z(wofs_init_time_dt, json_config_filename) 
 
-        print (start_valid, start_valid_date, start_valid_dt)
-        print (end_valid, end_valid_date, end_valid_dt) 
-        print (wofs_init_time, wofs_init_date, wofs_init_time_dt) 
+
+        #Compute valid window based on the wofs files provided 
+        valid_window = utils.subtract_dt(end_valid_dt, start_valid_dt, True)
+
+        print (valid_window) 
         quit() 
+        #Find PS init time from the first (most recent) PS file 
+        
+
+
 
         return 
 

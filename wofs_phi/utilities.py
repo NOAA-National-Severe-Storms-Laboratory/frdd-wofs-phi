@@ -7,9 +7,9 @@ import numpy as np
 import copy 
 from datetime import datetime, timedelta
 import datetime as dt 
+import json 
 
 
-#TODO: Not done yet. Also may need to rework. 
 def find_date_time_from_wofs(wofs_file, fcst_type): 
 
     """ Finds/returns the string time, string date, 
@@ -68,25 +68,92 @@ def find_date_time_from_wofs(wofs_file, fcst_type):
 
     return time, date, use_datetime
 
-    #OLD code: 
-    ##NOTE: Let's modify the below code to be cleaner. 
 
-    ##Increment the date listed if the init time is in the previous day but the
-    ##valid time is in the next day -- but only if we're concerned with returning
-    ##the forecast date/time and not the initialization date/time 
-    #if ((fcst_type=="forecast") and (validTime in c.next_day_times)\
-    #        and (initTime not in c.next_day_inits)):
-    #    dt = ForecastSpecs.str_to_dattime(validTime, date)
-    #    dt += timedelta(days=1)
-    #    date, __ = ForecastSpecs.dattime_to_str(dt)
+def get_date_before_00z(wofsInitTimeDT, jsonFileName):
+    """Returns the 8-char string (YYYYMMDD) corresponding to the forecast date
+        before 00z, assuming that times between 0000 and 1155 belong to the "next day"
+        after 00z. This should be most important/useful/relevant for training, which
+        has been done on "standard" wofs runs.
 
-    #if (fcst_type == "forecast"):
-    #    time = validTime
-    #elif (fcst_type == "init"):
-    #    time = initTime
-    #
-    #    return time, date
+        @wofsInitTimeDT : datetime obj : Wofs initialization time
+        @jsonFileName : str : Name of .json config file used 
+    """
+
+    #Get the list of next day times from the json config file 
+
+    config_data = read_json(jsonFileName) 
+    next_day_times = config_data['next_day_times'] 
+
+    date_string, time_string = dattime_to_str(wofsInitTimeDT)
+
+    #If the time string is in the next_day times, then we need to find
+    #the date string from the day before
+    
+    if (time_string in next_day_times): 
+        
+        day_before_dt = wofsInitTimeDT - timedelta(days=1) 
+
+        #Get updated date string
+
+        date_string, time_string = dattime_to_str(day_before_dt) 
+
+
+    return date_string
+
+
+def subtract_dt(dt1, dt2, inMinutes): 
+
+    """ Returns the difference (in datetime format) resulting from 
+        dt1 - dt2. 
+        @dt1 : datetime object 
+        @dt2 : datetime object
+        @inMinutes : boolean : If True, returns the subtraction in minutes, 
+            If False, returns a timedelta object
+    """
+
+
+    difference = dt1 - dt2 
+
+    if (inMinutes == True): 
+        difference = timedelta_to_min(difference) 
+    
+    return difference
+
+def timedelta_to_min(in_dt): 
+    """Converts the timedelta object to minutes. Returns the number of minutes. 
+        @in_dt : timedelta object : To be converted to minutes
+    """
+
+    minutes = int(in_dt.total_seconds()/60)
+
+    return minutes
 
 
 
-    return 
+def dattime_to_str(dt_obj): 
+    """Returns 8-char date string (YYYYMMDD) and 4-char time string (HHMM) 
+        based on datetime object. 
+        @dt_obj : datetime object : datetime object to convert to string
+    """
+
+    new_date_string = dt_obj.strftime("%Y%m%d") 
+    new_time_string = dt_obj.strftime("%H%M") 
+
+    return new_date_string, new_time_string 
+
+
+def read_json(jsonFilename): 
+    """ Reads in json file. Returns json data.
+        @jsonFilename : str : .json filename to read in
+    """
+    
+    with open(jsonFilename, 'r') as file:
+        data = json.load(file)
+
+    return data
+
+
+
+
+
+

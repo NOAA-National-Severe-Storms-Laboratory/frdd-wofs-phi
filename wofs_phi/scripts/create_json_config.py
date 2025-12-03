@@ -97,6 +97,35 @@ def main():
     methods_dict = get_methods_dict_from_files(txt_file_dir, all_fields_file, all_methods_file)
     single_point_fields = get_list_from_file(txt_file_dir, singlePtFile) 
 
+    #Assumes times between 0000 and 1155 UTC were started the previous day. However, 
+    #this list will be most useful/relevant for training. Actual start/end valid dates
+    #are determined based on the WoFS summary file names and should not be dependent on
+    #this list. 
+    next_day_times = ["0000", "0005", "0010", "0015", "0020", "0025",\
+                    "0030", "0035", "0040","0045", "0050", "0055",\
+                    "0100", "0105", "0110", "0115", "0120", "0125",\
+                    "0130", "0135", "0140","0145", "0150", "0155",\
+                    "0200", "0205", "0210", "0215", "0220", "0225",\
+                    "0230", "0235", "0240","0245", "0250", "0255",\
+                    "0300", "0305", "0310", "0315", "0320", "0325",\
+                    "0330", "0335", "0340","0345", "0350", "0355",\
+                    "0400", "0405", "0410", "0415", "0420", "0425",\
+                    "0430", "0435", "0440","0445", "0450", "0455",\
+                    "0500", "0505", "0510", "0515", "0520", "0525",\
+                    "0530", "0535", "0540","0545", "0550", "0555",\
+                    "0600", "0605", "0610", "0615", "0620", "0625",\
+                    "0630", "0635", "0640","0645", "0650", "0655",\
+                    "0700", "0705", "0710", "0715", "0720", "0725",\
+                    "0730", "0735", "0740","0745", "0750", "0755",\
+                    "0800", "0805", "0810", "0815", "0820", "0825",\
+                    "0830", "0835", "0840","0845", "0850", "0855",\
+                    "0900", "0905", "0910", "0915", "0920", "0925",\
+                    "0930", "0935", "0940","0945", "0950", "0955",\
+                    "1000", "1005", "1010", "1015", "1020", "1025",\
+                    "1030", "1035", "1040","1045", "1050", "1055", \
+                    "1100", "1105", "1110", "1115", "1120", "1125",\
+                    "1130", "1135", "1140", "1145", "1150", "1155"]
+
     #=========================================================
 
     #Create the dictionary and save to file 
@@ -105,7 +134,8 @@ def main():
                 "generate_reports": generate_reports, "save_npy": save_npy, \
                 "save_ncdf": save_ncdf, "plot_forecasts": plot_forecasts, \
                 "nc_outdir": nc_outdir, "use_ALL_files": use_ALL_files, \
-                "fields_methods_dict": methods_dict, "single_point_fields": single_point_fields}
+                "fields_methods_dict": methods_dict, "single_point_fields": single_point_fields,\
+                "next_day_times":next_day_times}
 
 
     #Save to file 
