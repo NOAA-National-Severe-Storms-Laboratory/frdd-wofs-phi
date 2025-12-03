@@ -109,8 +109,6 @@ class ForecastSpecs:
         #Compute valid window based on the wofs files provided 
         valid_window = utils.subtract_dt(end_valid_dt, start_valid_dt, True)
 
-        print (valid_window) 
-        quit() 
         #Find PS init time from the first (most recent) PS file 
         
 
