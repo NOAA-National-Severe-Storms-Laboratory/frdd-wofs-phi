@@ -137,9 +137,6 @@ class ForecastSpecs:
 
         new_fspecs.set_adjustable_radii_gridpoint(json_config_filename)
 
-        print (new_fspecs.adjustable_radii_gridpoint) 
-        quit() 
-
         #TODO: Need to implement these instance methods below. 
         new_fspecs.set_fieldsMethodsDict(json_config_filename)
 
@@ -224,11 +221,25 @@ class ForecastSpecs:
 
     def set_fieldsMethodsDict(self, jsonConfigFile):
 
+        #Set the fields-methods dictionary from the .json config file 
+        config_data = utils.read_json(jsonConfigFile)
+        
+        use_dict = config_data['fields_methods_dict']
+
+        self.fieldsMethodsDict = use_dict
+
+
         return 
 
 
     def set_singlePtFields(self, jsonConfigFile): 
+        
+        config_data = utils.read_json(jsonConfigFile)
 
+        singlePtFields = config_data['single_point_fields'] 
+
+        self.singlePtFields = singlePtFields
+    
         return 
 
 
