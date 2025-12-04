@@ -105,11 +105,6 @@ class ForecastSpecs:
         wofs_init_time, wofs_init_date, wofs_init_time_dt = utils.find_date_time_from_wofs(\
             wofs_files[0], "init") 
 
-
-        #TODO: Make some of these instance files, too. 
-        #Get the date before 00z; Will be most relevant for training, I believe. 
-        date_before_00z = utils.get_date_before_00z(wofs_init_time_dt, json_config_filename) 
-
         #Find PS init time from the first (most recent) PS file 
         ps_init_time, ps_init_date = utils.find_ps_date_time(ps_files[0], json_config_filename) 
 
@@ -118,49 +113,84 @@ class ForecastSpecs:
         
         #Find PS lead time for end of valid period (in minutes) 
         #based on PS initialization time and end of the valid period
-    
-        ps_start_lead_time = utils.subtract_dt(start_valid_dt, ps_init_time_dt, True) 
-
-        ps_end_lead_time = utils.subtract_dt(end_valid_dt, ps_init_time_dt, True) 
 
 
-        #Create new ForecastSpecs object
+        #Create new ForecastSpecs object; 
+        #Initialize with None Values for variables that will be set with instance methods
         new_fspecs = ForecastSpecs(start_valid, end_valid, start_valid_dt, end_valid_dt,\
                         wofs_init_time, wofs_init_time_dt, None, ps_init_time, \
-                        ps_start_lead_time, ps_end_lead_time, ps_init_time_dt, \
-                        None, None, None, None, date_before_00z)
+                        None, None, ps_init_time_dt, \
+                        None, None, None, None, None)
 
-        #MAKE INSTANCE FUNCTIONS -- NOTE: I might make more instance functions, too. 
+
+        #Populate the None instance variables with instance methods 
+        new_fspecs.set_before_00z_date(json_config_filename) 
+
+        new_fspecs.set_ps_lead_time_start()
+
+        new_fspecs.set_ps_lead_time_end() 
+
         new_fspecs.set_forecast_window()
 
         new_fspecs.set_ps_ages(ps_files, json_config_filename)
 
         new_fspecs.set_adjustable_radii_gridpoint(json_config_filename)
 
-        #TODO: Need to implement these instance methods below. 
         new_fspecs.set_fieldsMethodsDict(json_config_filename)
 
         new_fspecs.set_singlePtFields(json_config_filename)
 
 
-        #Compute valid window based on the wofs files provided 
-        #valid_window = utils.subtract_dt(end_valid_dt, start_valid_dt, True)
+        return new_fspecs
 
-        #Find the ages associated with the different PS files 
-        #ps_ages = utils.find_ps_ages(ps_files, json_config_filename) 
+
+    def set_before_00z_date(self, jsonConfigFile):
+        """ Sets the date before 00z. Will be most useful for training, I believe.
+            @jsonConfigFile : str : full path to .json config file
+        """
+    
+        date_before_00z = utils.get_date_before_00z(self.wofs_init_time_dt,\
+                            jsonConfigFile)
+
+        self.before_00z_date = date_before_00z
+        
+        return 
+
+
+    def set_ps_lead_time_start(self):
+        """ Sets the ProbSevere lead time to the start of the valid period (i.e.,
+            time between PS initialization and start of the forecast valid period)
+        """
+
+        ps_start_lead_time = utils.subtract_dt(self.start_valid_dt, self.ps_init_time_dt, True)
+
+        self.ps_lead_time_start = ps_start_lead_time
 
 
         return 
 
 
+    def set_ps_lead_time_end(self): 
+        """ Sets the ProbSevere lead time to the end of the forecast valid period 
+            (i.e., time between PS initialization and the end of the forecast
+            valid period) 
+        """ 
+
+        ps_end_lead_time = utils.subtract_dt(self.end_valid_dt, self.ps_init_time_dt, True)
+        
+        self.ps_lead_time_end = ps_end_lead_time
+
+        return 
+
+
     def set_forecast_window(self): 
-        """ Sets the forecast_window attribute from end_valid_dt and start_valid_dt attributes
+        """ Sets the forecast_window attribute (i.e., length of the forecast valid period 
+            in minutes) from end_valid_dt and start_valid_dt attributes
         """
 
         valid_window = utils.subtract_dt(self.end_valid_dt, self.start_valid_dt, True)
 
         self.forecast_window = valid_window
-
 
         return 
 
@@ -194,8 +224,16 @@ class ForecastSpecs:
 
 
     def set_adjustable_radii_gridpoint(self, jsonConfigFile): 
-        """Sets the adjustable radii at each extrapolation time: An array of radii at each
-            1 minute of extrapolation time. 
+        """Sets the adjustable radii at each extrapolation time based on attributes
+            from the json config file. 
+            The adjustable_radii_gridpoint variable is an array of radii of
+            influence (in gridpoint coordinates) at each 1 minute of extrapolation 
+            time. NOTE: In the current config file, the min and max radii are specified
+            to be small, making this array all zeros for current applications.
+            This signifies no additional spatial "buffering" of the extrapolated 
+            ProbSevere "tracks" from ProbSevere objects. This doesn't have to be the case
+            and can be changed in the .json config file (e.g., by specifying a greater
+            max_radius) 
             @jsonConfigFile : str : Full path to .json config file
         """
 

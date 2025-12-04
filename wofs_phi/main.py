@@ -93,20 +93,21 @@ class MLGenerator:
                     json_config_file, torp_files=[]): 
 
         """
-            @wofs_files : list of wofs files (excluding path) to use for the prediction
+            @wofs_files : List/arr-like : List of wofs files (excluding path) 
+                to use for the prediction
                 in chronological order, beginning with the start of the prediction window/
                 valid period and ending with the end of the prediction window/valid period.
-            @ps_files : list of probSevere files (excluding path) needed in reverse 
-                chronological order (i.e., starting with the most recent file/time step.) 
-                Typically, we go back to 180 minutes ago. 
-            @ps_path : str path to the ProbSevere files 
-            @wofs_path : str path to the WoFS files. 
-            @nc_outdir : str path showing the directory to save the final .ncdf files to
-            @mode : str either "forecast" for forecast mode or "warning" for warning mode
+            @ps_files : List/arr-like : List of probSevere files (excluding path)
+                needed in reverse chronological order (i.e., starting with the most 
+                recent file/time step.) Typically, we go back to 180 minutes ago. 
+            @ps_path : str : Path to the ProbSevere files 
+            @wofs_path : str : Path to the WoFS files. 
+            @nc_outdir : str : Path showing the directory to save the final .ncdf files to
+            @mode : str : Either "forecast" for forecast mode or "warning" for warning mode
                 predictions. 
             @json_config_file : str : Full file path to json file, which shows 
                 how various user-defined variables are set for wofs-phi
-            @torp_files : list of Torp files to use. Defaults as an empty list, which 
+            @torp_files : List : List of Torp files to use. Defaults as an empty list, which 
                 indicates TORP will not be used. 
         """
     
@@ -136,8 +137,6 @@ class MLGenerator:
         #file
         f_specs = forecast_specs.ForecastSpecs.create_forecast_specs(self.ps_files,\
                     self.wofs_files, self.json_config_file)
-        
-
         
 
         return 
@@ -179,8 +178,8 @@ def main():
 
     #NOTE: Eventually might not need these if we have the proper variables
     #set in the json file. 
-    on_cloud = False #True if on cloud, False otherwise 
-    is_training = True # True if using for model training; False if using for realtime 
+    #on_cloud = False #True if on cloud, False otherwise 
+    #is_training = True # True if using for model training; False if using for realtime 
 
     do_warning_mode = False #True if we want to generate warning mode predictions
     do_forecast_mode = True #True if we want to generate forecast mode predictions
