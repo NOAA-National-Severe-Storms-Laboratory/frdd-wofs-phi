@@ -8,6 +8,7 @@ import copy
 from datetime import datetime, timedelta
 import datetime as dt 
 import json 
+import re 
 
 
 def find_date_time_from_wofs(wofs_file, fcst_type): 
@@ -211,6 +212,40 @@ def str_to_dattime(string_time, string_date):
 
 
     return dt_obj
+
+
+def datetime_from_ps(psFile, jsonConfigFile): 
+    """Creates/Returns a datetime object from a probSevere file and .json
+        config file. 
+        @psFile : str : ProbSevere filename 
+        @jsonConfigFile : str : Name of .json config file (full path) 
+    """
+    
+    time, date = find_ps_date_time(psFile, jsonConfigFile)
+    dt_obj = str_to_dattime(time, date) 
+
+
+    return dt_obj
+
+#Might make this an instance method 
+#def find_ps_ages(psFiles, configJson): 
+#    """Finds/Returns a list of ages (in minutes) of the various
+#        probSevere files. 
+#        @psFiles : list : List of ProbSevere filenames 
+#        @configJson : str : name of .json config file 
+#    """
+#
+#    ages = [] 
+#
+#    first_ps_file = psFiles[0]
+#    first_ps_dt = datetime_from_ps(first_ps_file, configJson)
+#
+#    #for p in range(len(ps_files)): 
+#
+#
+#    return  
+
+
 
 
 

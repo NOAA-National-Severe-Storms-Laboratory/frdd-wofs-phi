@@ -252,5 +252,10 @@
         "1150",
         "1155"
     ],
-    "ps_version": 2
+    "ps_version": 2,
+    "dx_km": 3.0,
+    "ps_thresh": 0.01,
+    "max_ps_extrap_time": 241.0,
+    "min_radius": 1.5,
+    "max_radius": 1.5
 }

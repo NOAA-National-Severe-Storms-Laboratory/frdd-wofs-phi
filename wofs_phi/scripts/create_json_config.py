@@ -93,6 +93,27 @@ def main():
     use_ALL_files = True
 
     ps_version = 2 #Which version of ProbSevere to use
+
+    dx_km = 3.0 #Horizontal grid spacing of wofs in km 
+
+    ps_thresh = 0.01 #ps objects must have probs greater than or equal to this amount to be considered
+
+    #Maximum amount of PS extrapolation time (used for setting min and max radius) 
+    max_ps_extrap_time = 241.0 
+
+    min_radius = 1.5 #in km (for probsevere objects) 
+
+    max_radius = 1.5 #in km 
+
+    #Amount of time (in minutes) to go back (relative to first PS file) 
+    #ps_time_to_go_back = 180.0
+
+    #nan_replace_value = 0.0 #Replace nans in wofs files with this value 
+    
+    #conv_type = "circle" #"circle" or "square" -- Tells how to do the convolutions
+
+    #How far to "look" spatially in km for predictors 
+    #predictor_radii_km = [0.0, 15.0, 30.0, 45.0, 60.0] 
     
     #TODO: Implement these methods
     methods_dict = get_methods_dict_from_files(txt_file_dir, all_fields_file, all_methods_file)
@@ -136,7 +157,9 @@ def main():
                 "save_ncdf": save_ncdf, "plot_forecasts": plot_forecasts, \
                 "nc_outdir": nc_outdir, "use_ALL_files": use_ALL_files, \
                 "fields_methods_dict": methods_dict, "single_point_fields": single_point_fields,\
-                "next_day_times":next_day_times, "ps_version": ps_version}
+                "next_day_times":next_day_times, "ps_version": ps_version,\
+                "dx_km":dx_km, "ps_thresh": ps_thresh, "max_ps_extrap_time":max_ps_extrap_time,\
+                "min_radius":min_radius, "max_radius":max_radius}
 
 
     #Save to file 
