@@ -81,9 +81,10 @@ def main():
 
     generate_forecasts = True #Generates the predictors array if True
     generate_reports = True #Generates the reports file if True 
-    save_npy = True #Tells whether or not to save the npy predictor files 
-    save_ncdf = True #Tells whether or not to create/save the ncdf (realtime) files
+    save_predictors_to_npy = True #Tells whether or not to save the npy predictor files 
+    save_predictions_to_ncdf = True #Tells whether or not to create/save the ncdf (realtime) files
     plot_forecasts = True #Tells whether or not to create the .png files for wofs viewer
+    include_torp_in_predictors = False #Tells whether or not to include TORP as predictors
 
     nc_outdir = "." #Where to place the final netcdf files #Needed for real time
     #nc_outdir = "/home/eric.loken/python_packages/frdd-wofs-phi/wofs_phi/ncdf"
@@ -153,8 +154,11 @@ def main():
     #Create the dictionary and save to file 
 
     json_dict = {"generate_forecasts": generate_forecasts, \
-                "generate_reports": generate_reports, "save_npy": save_npy, \
-                "save_ncdf": save_ncdf, "plot_forecasts": plot_forecasts, \
+                "generate_reports": generate_reports, \
+                "save_predictors_to_npy": save_predictors_to_npy, \
+                "save_predictions_to_ncdf": save_predictions_to_ncdf,\
+                "plot_forecasts": plot_forecasts, \
+                "include_torp_in_predictors":include_torp_in_predictors,\
                 "nc_outdir": nc_outdir, "use_ALL_files": use_ALL_files, \
                 "fields_methods_dict": methods_dict, "single_point_fields": single_point_fields,\
                 "next_day_times":next_day_times, "ps_version": ps_version,\

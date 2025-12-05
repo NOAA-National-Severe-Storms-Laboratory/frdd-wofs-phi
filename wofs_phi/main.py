@@ -131,6 +131,12 @@ class MLGenerator:
 
         #Get relevant information from provided .json config file 
         config_data = utils.read_json(self.json_config_file)
+        generate_forecasts = config_data['generate_forecasts'] 
+        save_predictors_to_npy = config_data['save_predictors_to_npy'] 
+        save_predictions_to_ncdf = config_data['save_predictions_to_ncdf'] 
+        plot_forecasts = config_data['plot_forecasts'] 
+        generate_reports = config_data['generate_reports'] 
+        include_torp_in_predictors = config_data['include_torp_in_predictors'] 
 
         #Create Grid object, which will hold the various grid 
         #specifications -- here, this will contain info about the WoFS grid, 
@@ -144,7 +150,10 @@ class MLGenerator:
                     self.wofs_files, self.json_config_file)
         
         
-        
+        #Now, start making the predictions if generate_forecasts == True
+        if (generate_forecasts == True): 
+
+            pass  
 
         return 
 
