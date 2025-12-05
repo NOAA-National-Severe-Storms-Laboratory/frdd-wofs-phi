@@ -129,20 +129,28 @@ class MLGenerator:
 
         #full_wofs_file = f"{self.wofs_path}/{self.wofs_files[0]}"
 
-        #Get the forecast Grid object from the first wofs file 
-        #TODO 
+        #Get relevant information from provided .json config file 
+        config_data = utils.read_json(self.json_config_file)
+
+        #Create Grid object, which will hold the various grid 
+        #specifications -- here, this will contain info about the WoFS grid, 
+        #but this can be adaptable to other grids. 
         fcst_grid = grid.Grid.create_wofs_grid(self.wofs_path, self.wofs_files[0])
 
-        #Need to create forecast specifications object -- Will pass in json config
-        #file
+        #Create the ForecastSpecs object, which will hold the various characteristics
+        #of the forecast (e.g., initialization times, start and end valid times, forecast
+        #time window, etc.). 
         f_specs = forecast_specs.ForecastSpecs.create_forecast_specs(self.ps_files,\
                     self.wofs_files, self.json_config_file)
+        
+        
         
 
         return 
 
-
-#Might be worth adding methods for training and real time usage
+#NOTE: 
+#Might be worth adding methods for training and real time usage: Will probably
+#put those in their own separate files 
 
 
 def get_ps_files_from_times_and_dates(list_of_times, list_of_dates): 
