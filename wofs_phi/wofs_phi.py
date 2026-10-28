@@ -5211,6 +5211,24 @@ class TORP_List:
         return torp_dict
     
     @staticmethod
+    def read_torp_csv(path):
+        '''Reads a TORP csv. Newer TORP versions (id = <radar>_<id>_<first detection>, numeric
+        trends) are converted to the format used in training (id_date = <id>_<first detection>,
+        trends as '+', '-', '=', or -99900).'''
+
+        torp_df = pd.read_csv(path)
+        if 'id_date' in torp_df.columns:
+            return torp_df
+
+        torp_df['id_date'] = torp_df['id'].map(lambda x: x.split('_', 1)[1] if isinstance(x, str) else x)
+        for col in [col for col in torp_df.columns if col.endswith('_trend')]:
+            values = pd.to_numeric(torp_df[col], errors='coerce')
+            signs = np.where(values > 0, '+', np.where(values < 0, '-', '='))
+            torp_df[col] = np.where((values == -99900) | values.isna(), -99900, signs).astype(object)
+
+        return torp_df
+
+    @staticmethod
     def gen_torp_dict_from_file(path, grid, fcst_specs, wofs_spinup, td = None, cutoff = None):
         '''Given a torp csv file from a radar, this function will create
         TORP objects and add them to a dictionary of TORP lists. Each list
@@ -5227,7 +5245,7 @@ class TORP_List:
         else:
             torp_dict = copy.deepcopy(td)
         
-        torp_df = pd.read_csv(path)
+        torp_df = TORP_List.read_torp_csv(path)
         IDs = torp_df.id_date
         probs = torp_df.probability
         #Use the QC'd positions if present (training data has them); else fall back to the raw TORP positions

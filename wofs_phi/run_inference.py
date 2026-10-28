@@ -7,12 +7,20 @@
 # Run from this directory (see --help), e.g.:
 #   python run_inference.py --dates 20240507 \
 #       --wofs-dir /path/to/SummaryFiles --ps-dir /path/to/PS_json \
-#       --torp-dir /path/to/torp --outdir /path/to/out
+#       --torp-dir /path/to/torp --outdir /path/to/out --nprocs 24
+#
+# Cases run in parallel in separate processes (--nprocs); each uses
+# up to ~10 GB of memory. Cases whose netcdf already exists are
+# skipped unless --overwrite is given.
 #===========================================================
+
+import os
+#One thread per math library in each worker; parallelism comes from --nprocs
+for _var in ["OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"]:
+    os.environ.setdefault(_var, "1")
 
 import argparse
 import datetime as dt
-import os
 import re
 import sys
 import time
@@ -151,8 +159,7 @@ def check_inputs(wofs_path, wofs_files, ps_files):
     return ""
 
 
-def save_ncdf(outdir, fcst_specs, grid, probs_dict, model_files_dict, num_torp_files):
-    nc_outname = "%s/%s" %(outdir, wofs_phi.MLGenerator.get_ncdf_outname(fcst_specs))
+def save_ncdf(nc_outname, fcst_specs, grid, probs_dict, model_files_dict, num_torp_files):
 
     ds = xr.Dataset(coords={"y": range(grid.ny), "x": range(grid.nx)})
     for hazard, probs in probs_dict.items():
@@ -168,7 +175,9 @@ def save_ncdf(outdir, fcst_specs, grid, probs_dict, model_files_dict, num_torp_f
                 "start_valid": fcst_specs.start_valid_dt.strftime("%Y%m%d_%H%M"),
                 "end_valid": fcst_specs.end_valid_dt.strftime("%Y%m%d_%H%M"),
                 "num_torp_files": num_torp_files}
-    ds.to_netcdf(nc_outname)
+    #Write then rename, so an interrupted run never leaves a partial file that would be skipped on resume
+    ds.to_netcdf(nc_outname + ".tmp")
+    os.replace(nc_outname + ".tmp", nc_outname)
 
     return nc_outname
 
@@ -188,14 +197,18 @@ def run_case(case_args):
         if error != "":
             return "SKIP %s: %s" %(case_str, error)
 
+        fcst_specs = wofs_phi.ForecastSpecs.create_forecast_specs(ps_files, wofs_files, c.all_fields_file,
+                                                                  c.all_methods_file, c.single_pt_file)
+        nc_outname = "%s/%s" %(args.outdir, wofs_phi.MLGenerator.get_ncdf_outname(fcst_specs))
+        if os.path.isfile(nc_outname) and (not args.overwrite):
+            return "DONE %s: %s already exists" %(case_str, nc_outname)
+
         wofs_init_dt = WofsFile.get_wofs_dt(init, date)
         torp_files = find_torp_files(args.torp_dir, date, wofs_init_dt)
 
         ml = wofs_phi.MLGenerator(wofs_files, ps_files, c.ps_dir, wofs_path, torp_files, args.outdir,
                                   "forecast", [TRAIN_TYPE])
         grid = wofs_phi.Grid.create_wofs_grid(wofs_path, wofs_files[0])
-        fcst_specs = wofs_phi.ForecastSpecs.create_forecast_specs(ps_files, wofs_files, c.all_fields_file,
-                                                                  c.all_methods_file, c.single_pt_file)
         __, predictors = ml.build_predictors(grid, fcst_specs)
 
         if predictors.shape[1] != c.num_training_vars:
@@ -211,7 +224,7 @@ def run_case(case_args):
             probs_dict[hazard] = np.mean([m.predict_proba(predictors)[:, 1] for m in models], axis=0)
             model_files_dict[hazard] = get_model_filenames(hazard, lead_time, args.folds)
 
-        nc_outname = save_ncdf(args.outdir, fcst_specs, grid, probs_dict, model_files_dict, len(torp_files))
+        save_ncdf(nc_outname, fcst_specs, grid, probs_dict, model_files_dict, len(torp_files))
 
         return "OK   %s: %s (%s TORP files, %.0fs)" %(case_str, nc_outname, len(torp_files), time.time() - t0)
 
@@ -238,6 +251,7 @@ def main():
     parser.add_argument("--nprocs", type=int, default=1, help="cases to run in parallel")
     parser.add_argument("--rf-jobs", type=int, default=4, help="n_jobs for each RF predict_proba")
     parser.add_argument("--save-predictors", action="store_true", help="also save the 1d predictor arrays (.npy)")
+    parser.add_argument("--overwrite", action="store_true", help="rerun cases whose netcdf already exists")
     args = parser.parse_args()
 
     set_config(args)
@@ -247,16 +261,23 @@ def main():
     print("%s cases; model_type=%s; %s predictors; folds=%s" %(len(cases), c.model_type, c.num_training_vars, args.folds))
     sys.stdout.flush()
 
+    t0 = time.time()
     case_args = [(case, args) for case in cases]
+    results = []
     if args.nprocs > 1:
         with Pool(args.nprocs) as pool:
-            for result in pool.imap(run_case, case_args):
-                print(result)
+            for result in pool.imap_unordered(run_case, case_args):
+                results.append(result)
+                print("[%d/%d %.0f min] %s" %(len(results), len(cases), (time.time() - t0)/60, result))
                 sys.stdout.flush()
     else:
         for ca in case_args:
-            print(run_case(ca))
+            results.append(run_case(ca))
+            print("[%d/%d %.0f min] %s" %(len(results), len(cases), (time.time() - t0)/60, results[-1]))
             sys.stdout.flush()
+
+    counts = {status: sum(r.startswith(status) for r in results) for status in ["OK", "DONE", "SKIP", "FAIL"]}
+    print("Finished in %.1f min: %s" %((time.time() - t0)/60, ", ".join("%s %s" %(k, v) for k, v in counts.items())))
 
     return
 
