@@ -80,7 +80,10 @@ def haversine(lat1, lon1, lat2, lon2):
 
 def haversine_get_lon(lat, lon, x_dist):
     '''Gets a longitude given a point and a zonal distance (in km)'''
-    
+
+    if x_dist == 0:
+        return lon
+
     r = 6371
     lat = math.radians(lat)
     dLat = 0

@@ -76,6 +76,14 @@ import utilities
 import predictor_extractor as pex
 import ml_driver
 
+try:
+    from wofs.common import remove_reserved_keys
+except ImportError:
+    #frdd-wofs-post not available: minimal stand-in (only affects netcdf attribute metadata)
+    def remove_reserved_keys(attrs):
+        reserved = ['missing_value', 'scale_factor', 'add_offset']
+        return {k: v for k, v in attrs.items() if not (k.startswith('_') or k in reserved)}
+
 import warnings
 import cartopy.feature as cfeature
 import cartopy.crs as ccrs
@@ -135,6 +143,74 @@ class MLGenerator:
         self.train_types = train_types
 
 
+    def build_predictors(self, fcst_grid, forecast_specs):
+        '''Builds the 1d predictor array (WoFS + PS + misc, plus TORP if c.include_torp_in_predictors).
+            @fcst_grid is the Grid object for this case
+            @forecast_specs is the ForecastSpecs object for this case
+            @Returns the Wofs object and the 1d predictor array (rows: grid points, columns: predictors)'''
+
+        #Do PS preprocessing -- parallel track 1 -- Returns a ps object that holds an xarray and 
+        #extrapolated geodataframe (xarray is what we likely most care about)
+
+        #Do WoFS preprocessing -- parallel track 2 
+        wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
+        
+        #Skip for now for debugging the Wofs.preprocess_wofs method 
+        ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files, wofs)
+
+        #Concatenate parallel tracks 
+        combined_xr = pex.xr_from_ps_and_wofs(ps, wofs) 
+
+        #Add predictors -- wofs lat/lon, wofs point, wofs initialization time
+   
+        #Add gridded fields
+ 
+        #Add latitude points to xarray 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lats, "lat")
+
+        #Add longitude points to xarray 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lons, "lon") 
+    
+        #Add wofs y points 
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "wofs_y") 
+
+        #Add wofs x points
+        combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "wofs_x") 
+
+        #Add wofs initialization time 
+        combined_xr = pex.add_single_field(combined_xr, Wofs.INIT_TIME_DICT[forecast_specs.wofs_init_time]\
+                            , "wofs_init_time", fcst_grid.ny, fcst_grid.nx) 
+
+        #Add convolutions
+        #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
+        #Probably can compute stuff using the predictor_radii_km in config file 
+        #rf_sizes, grid spacing of wofs
+        conv_predictors_ds = pex.add_convolutions(combined_xr, c.conv_type, forecast_specs.allFields, \
+                            forecast_specs.allMethods, forecast_specs.singlePtFields, \
+                            c.predictor_radii_km, c.dx_km)
+
+        #Get 1d predictor names 
+        predictor_list = pex.get_predictor_list(forecast_specs.allFields, \
+                            forecast_specs.singlePtFields, c.predictor_radii_km, \
+                            c.extra_predictor_names)
+
+   
+        #Save predictor names to file -- if desired 
+        #MLGenerator.save_predictor_names(predictor_list)
+
+        #Extract 1d predictors
+        one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
+                        forecast_specs, fcst_grid)
+        
+        #get 1d torp predictors to append
+        if c.include_torp_in_predictors == True:
+            wofs_lead_time = int((forecast_specs.start_valid_dt - forecast_specs.wofs_init_time_dt).seconds/60)
+            torp_1d_pred_array = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs, wofs_lead_time)
+            one_d_pred_array = np.hstack((one_d_pred_array, torp_1d_pred_array))
+
+        return wofs, one_d_pred_array
+
+
     def generate(self):
         '''Instance method to generate the predictions given an MLGenerator object.
             Kind of like the "main method" for generating the predictions. ''' 
@@ -151,64 +227,7 @@ class MLGenerator:
 
 
         if (c.generate_forecasts == True):
-            #Do PS preprocessing -- parallel track 1 -- Returns a ps object that holds an xarray and 
-            #extrapolated geodataframe (xarray is what we likely most care about)
-
-            #Do WoFS preprocessing -- parallel track 2 
-            wofs = Wofs.preprocess_wofs(forecast_specs, fcst_grid, self.wofs_path, self.wofs_files)
-            
-            #Skip for now for debugging the Wofs.preprocess_wofs method 
-            ps = PS.preprocess_ps(fcst_grid, forecast_specs, self.ps_path, self.ps_files, wofs)
-
-            #Concatenate parallel tracks 
-            combined_xr = pex.xr_from_ps_and_wofs(ps, wofs) 
-
-            #Add predictors -- wofs lat/lon, wofs point, wofs initialization time
-       
-            #Add gridded fields
- 
-            #Add latitude points to xarray 
-            combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lats, "lat")
-
-            #Add longitude points to xarray 
-            combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.lons, "lon") 
-        
-            #Add wofs y points 
-            combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.ypts, "wofs_y") 
-
-            #Add wofs x points
-            combined_xr = pex.add_gridded_field(combined_xr, fcst_grid.xpts, "wofs_x") 
-
-            #Add wofs initialization time 
-            combined_xr = pex.add_single_field(combined_xr, Wofs.INIT_TIME_DICT[forecast_specs.wofs_init_time]\
-                                , "wofs_init_time", fcst_grid.ny, fcst_grid.nx) 
-
-            #Add convolutions
-            #What is needed? combined_xr, footprint_type, all_var_names, all_var_methods
-            #Probably can compute stuff using the predictor_radii_km in config file 
-            #rf_sizes, grid spacing of wofs
-            conv_predictors_ds = pex.add_convolutions(combined_xr, c.conv_type, forecast_specs.allFields, \
-                                forecast_specs.allMethods, forecast_specs.singlePtFields, \
-                                c.predictor_radii_km, c.dx_km)
-
-            #Get 1d predictor names 
-            predictor_list = pex.get_predictor_list(forecast_specs.allFields, \
-                                forecast_specs.singlePtFields, c.predictor_radii_km, \
-                                c.extra_predictor_names)
-
-       
-            #Save predictor names to file -- if desired 
-            #MLGenerator.save_predictor_names(predictor_list)
-
-            #Extract 1d predictors
-            one_d_pred_array = pex.extract_1d(conv_predictors_ds, predictor_list, \
-                            forecast_specs, fcst_grid)
-            
-            #get 1d torp predictors to append
-            if c.include_torp_in_predictors == True:
-                wofs_lead_time = int((forecast_specs.start_valid_dt - forecast_specs.wofs_init_time_dt).seconds/60)
-                torp_1d_pred_array = TORP_List.gen_torp_npy(self.torp_files, fcst_grid, forecast_specs, wofs_lead_time)
-                one_d_pred_array = np.hstack((one_d_pred_array, torp_1d_pred_array))
+            wofs, one_d_pred_array = self.build_predictors(fcst_grid, forecast_specs)
 
             #Save predictors to file (if we're training)
             if (c.save_npy == True):
@@ -4712,15 +4731,35 @@ class TORP:
     
     def set_storm_motion(self, torp_df_row):
         '''return storm motion in m/s'''
-        storm_speed = torp_df_row.QC_Spd
-        storm_dir = torp_df_row.QC_Dir
+        if 'QC_Spd' in torp_df_row.index:
+            storm_speed = torp_df_row.QC_Spd
+            storm_dir = torp_df_row.QC_Dir
+        else:
+            storm_speed, storm_dir = TORP.get_raw_storm_motion(torp_df_row)
         unit_circle_angle = 270 - storm_dir
         
         self.storm_motion_north = storm_speed*math.sin(math.radians(unit_circle_angle))
         self.storm_motion_east = storm_speed*math.cos(math.radians(unit_circle_angle))
-        
+
         return
-    
+
+    @staticmethod
+    def get_raw_storm_motion(torp_df_row):
+        '''For TORP files without the QC columns: returns (speed, direction) from the first
+        valid raw motion pair (current, avg, assumed, env). If none are valid, returns (0, 0),
+        i.e., the TORP object is treated as stationary.'''
+        for spd_name, dir_name in [('speed', 'direction'), ('speed_avg', 'direction_avg'),
+                                   ('speed_assumed', 'direction_assumed'), ('speed_env', 'direction_env')]:
+            try:
+                spd = float(torp_df_row[spd_name])
+                direc = float(torp_df_row[dir_name])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if (spd >= 0) and (direc >= 0) and (not math.isnan(spd)) and (not math.isnan(direc)):
+                return spd, direc
+
+        return 0.0, 0.0
+
     def set_future_lats_lons(self):
         minutes_to_0 = self.time_to_start_valid
         
@@ -5191,8 +5230,13 @@ class TORP_List:
         torp_df = pd.read_csv(path)
         IDs = torp_df.id_date
         probs = torp_df.probability
-        lats = torp_df.QC_Lat
-        lons = torp_df.QC_Lon
+        #Use the QC'd positions if present (training data has them); else fall back to the raw TORP positions
+        if 'QC_Lat' in torp_df.columns:
+            lats = torp_df.QC_Lat
+            lons = torp_df.QC_Lon
+        else:
+            lats = torp_df.lat
+            lons = torp_df.lon
         
         file = path.split('/')[-1]
         last_update = file.split('_')[0]
