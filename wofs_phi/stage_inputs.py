@@ -2,7 +2,7 @@
 # Builds symlink trees so archived WoFS and ProbSevere v3 data
 # match the layout that wofs_phi / run_inference.py expect:
 #
-#   WoFS: <stage>/wofs/<date_before_00z>/<init>/wofs_ALL_*.nc
+#   WoFS: <stage>/wofs/<date_before_00z>/<init>/wofs_ALL_*.nc  (inits merged across runs of one domain)
 #     from <wofs_root>/WOFSRun<YYYYMMDD>-<HHMMSS>d<N>/<calendar date>/<init>/
 #
 #   PSv3: <stage>/ps/<YYYY>/<YYYYMMDD>/PROBSEVERE-V3/SSEC_AWIPS_PROBSEVERE-V3_<YYYYMMDD>_<HHMM>00.json
@@ -24,39 +24,50 @@ PS_PATTERN = re.compile(r"^SSEC_AWIPS_PROBSEVERE(?:-V3)?_(\d{8})_(\d{2})(\d{2})(
 WOFS_RESET_HOUR = 12 #inits before this hour belong to the previous (before 00z) date
 
 
-def find_wofs_run(wofs_root, date, domain):
-    '''Returns the WOFSRun directory for a date and domain; errors if there isn't exactly one'''
+def find_wofs_runs(wofs_root, domain):
+    '''Returns every WOFSRun directory for a domain. A case date's inits can be spread over
+        several runs (restarts, runs started the previous evening, later reruns).'''
 
-    runs = []
-    for run in sorted(os.listdir(wofs_root)):
-        m = WOFS_RUN_PATTERN.match(run)
-        if m and m.group(1) == date and m.group(3) == domain:
-            runs.append(run)
-    if len(runs) != 1:
-        raise ValueError("%s: expected 1 WOFSRun dir for domain d%s, found %s: %s" %(date, domain, len(runs), runs))
-
-    return os.path.join(wofs_root, runs[0])
+    return [os.path.join(wofs_root, run) for run in sorted(os.listdir(wofs_root))
+            if (WOFS_RUN_PATTERN.match(run) is not None) and (WOFS_RUN_PATTERN.match(run).group(3) == domain)]
 
 
 def stage_wofs(wofs_root, date, domain, stage_dir):
-    run_dir = find_wofs_run(wofs_root, date, domain)
+    '''Links each init of a case date from whichever run holds it. If several runs hold the
+        same init, the copy with the most wofs_ALL files is used (earliest run on a tie).'''
+
+    best = {} #init -> (num files, init dir)
+    for run_dir in find_wofs_runs(wofs_root, domain):
+        for cal_date in sorted(os.listdir(run_dir)):
+            if not re.match(r"^\d{8}$", cal_date) or not os.path.isdir(os.path.join(run_dir, cal_date)):
+                continue
+            for init in sorted(os.listdir(os.path.join(run_dir, cal_date))):
+                if not re.match(r"^\d{4}$", init):
+                    continue
+                init_dt = dt.datetime.strptime(cal_date + init, "%Y%m%d%H%M")
+                if init_dt.hour < WOFS_RESET_HOUR:
+                    init_dt -= dt.timedelta(days=1)
+                if init_dt.strftime("%Y%m%d") != date:
+                    continue
+                init_dir = os.path.join(run_dir, cal_date, init)
+                num_files = len(glob.glob(os.path.join(init_dir, "wofs_ALL_*.nc")))
+                if num_files > 0 and ((init not in best) or (num_files > best[init][0])):
+                    best[init] = (num_files, init_dir)
+
+    if len(best) == 0:
+        return "%s: no d%s WoFS inits" %(date, domain)
+
     out_date_dir = os.path.join(stage_dir, "wofs", date)
     os.makedirs(out_date_dir, exist_ok=True)
+    for init, (__, init_dir) in best.items():
+        link = os.path.join(out_date_dir, init)
+        if os.path.islink(link) and os.readlink(link) != init_dir:
+            os.remove(link)
+        if not os.path.islink(link):
+            os.symlink(init_dir, link)
 
-    num_inits = 0
-    for cal_date in sorted(os.listdir(run_dir)):
-        for init in sorted(os.listdir(os.path.join(run_dir, cal_date))):
-            init_dt = dt.datetime.strptime(cal_date + init, "%Y%m%d%H%M")
-            if init_dt.hour < WOFS_RESET_HOUR:
-                init_dt -= dt.timedelta(days=1)
-            if init_dt.strftime("%Y%m%d") != date:
-                continue
-            link = os.path.join(out_date_dir, init)
-            if not os.path.islink(link):
-                os.symlink(os.path.join(run_dir, cal_date, init), link)
-            num_inits += 1
-
-    return "%s: %s WoFS inits from %s" %(date, num_inits, run_dir)
+    runs = sorted(set(os.path.basename(os.path.dirname(os.path.dirname(d))) for __, d in best.values()))
+    return "%s: %s d%s WoFS inits from %s" %(date, len(best), domain, ", ".join(runs))
 
 
 def stage_ps_day(ps_root, cal_date, stage_dir):

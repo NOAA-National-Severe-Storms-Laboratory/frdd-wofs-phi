@@ -9,6 +9,9 @@
 #       --wofs-dir /path/to/SummaryFiles --ps-dir /path/to/PS_json \
 #       --torp-dir /path/to/torp --outdir /path/to/out --nprocs 24
 #
+# Output goes to <outdir>/<date>/. run_all_cases.sh stages inputs
+# and runs every case date.
+#
 # Cases run in parallel in separate processes (--nprocs); each uses
 # up to ~10 GB of memory. Cases whose netcdf already exists are
 # skipped unless --overwrite is given.
@@ -199,14 +202,16 @@ def run_case(case_args):
 
         fcst_specs = wofs_phi.ForecastSpecs.create_forecast_specs(ps_files, wofs_files, c.all_fields_file,
                                                                   c.all_methods_file, c.single_pt_file)
-        nc_outname = "%s/%s" %(args.outdir, wofs_phi.MLGenerator.get_ncdf_outname(fcst_specs))
+        date_outdir = os.path.join(args.outdir, date)
+        os.makedirs(date_outdir, exist_ok=True)
+        nc_outname = "%s/%s" %(date_outdir, wofs_phi.MLGenerator.get_ncdf_outname(fcst_specs))
         if os.path.isfile(nc_outname) and (not args.overwrite):
             return "DONE %s: %s already exists" %(case_str, nc_outname)
 
         wofs_init_dt = WofsFile.get_wofs_dt(init, date)
         torp_files = find_torp_files(args.torp_dir, date, wofs_init_dt)
 
-        ml = wofs_phi.MLGenerator(wofs_files, ps_files, c.ps_dir, wofs_path, torp_files, args.outdir,
+        ml = wofs_phi.MLGenerator(wofs_files, ps_files, c.ps_dir, wofs_path, torp_files, date_outdir,
                                   "forecast", [TRAIN_TYPE])
         grid = wofs_phi.Grid.create_wofs_grid(wofs_path, wofs_files[0])
         __, predictors = ml.build_predictors(grid, fcst_specs)
@@ -215,7 +220,7 @@ def run_case(case_args):
             return "FAIL %s: built %s predictors, models expect %s" %(case_str, predictors.shape[1], c.num_training_vars)
 
         if args.save_predictors:
-            np.save("%s/predictors_%s_%s_lead%03d.npy" %(args.outdir, date, init, lead_time), predictors.astype(np.float32))
+            np.save("%s/predictors_%s_%s_lead%03d.npy" %(date_outdir, date, init, lead_time), predictors.astype(np.float32))
 
         probs_dict = {}
         model_files_dict = {}
@@ -242,7 +247,7 @@ def main():
                         help="root dir holding YYYY/YYYYMMDD/PROBSEVERE-V3/SSEC_AWIPS_PROBSEVERE-V3_YYYYMMDD_HHMM00.json")
     parser.add_argument("--torp-dir", required=True,
                         help="root dir searched recursively for TORP csvs named YYYYMMDD-HHMMSS_*.csv")
-    parser.add_argument("--outdir", required=True)
+    parser.add_argument("--outdir", required=True, help="output root; files go to <outdir>/<date>/")
     parser.add_argument("--inits", nargs="+", default=all_inits, help="wofs init times (HHMM); default: all")
     parser.add_argument("--leads", nargs="+", type=int, default=LEAD_TIMES, choices=LEAD_TIMES)
     parser.add_argument("--hazards", nargs="+", default=list(HAZARD_RADII), choices=list(HAZARD_RADII))
